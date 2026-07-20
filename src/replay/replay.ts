@@ -26,8 +26,16 @@ export function replayRun(
 
 /**
  * Layer-1 verification (doc §3.1): replay the log, compare checkpoint hashes.
- * On divergence, re-run live + replay with per-tick hashes to find the first
- * inconsistent tick.
+ *
+ * `runSim` never throws on a tampered log: a replayed action that is illegal (because
+ * an earlier tampered action shifted state) causes the run to halt gracefully at that
+ * tick (`RunResult.haltedAtTick`) rather than throw — throwing is reserved for genuine
+ * engine bugs in live (non-replayed) decisions. This function treats the halt as one
+ * more data point to compare, not as an error to catch.
+ *
+ * On divergence, re-run live + replay with per-tick hashes and take the first tick
+ * where the hash sequences actually differ (or, if the replay's hashes all matched but
+ * it halted early, the halt tick) as `firstDivergentTick`.
  */
 export function verifyReplay(
   manifest: WorldManifest,
@@ -37,28 +45,18 @@ export function verifyReplay(
   recordedCheckpoints: Checkpoint[],
   ticks: number,
 ): ReplayReport {
-  let replayed: RunResult | null = null;
-  let divergenceDetected = false;
-  let firstDivergentCheckpoint: number | null = null;
+  const replayed = replayRun(manifest, roster, seedRoot, actionLog, ticks);
 
-  // Try to replay and compare checkpoints
-  try {
-    replayed = replayRun(manifest, roster, seedRoot, actionLog, ticks);
-    for (let i = 0; i < recordedCheckpoints.length; i++) {
-      const rec = recordedCheckpoints[i]!;
-      const got = replayed.checkpoints[i];
-      if (got === undefined || got.tick !== rec.tick || got.stateHash !== rec.stateHash) {
-        firstDivergentCheckpoint = rec.tick;
-        divergenceDetected = true;
-        break;
-      }
+  let firstDivergentCheckpoint: number | null = null;
+  for (const rec of recordedCheckpoints) {
+    const got = replayed.checkpoints.find((c) => c.tick === rec.tick);
+    if (got === undefined || got.stateHash !== rec.stateHash) {
+      firstDivergentCheckpoint = rec.tick;
+      break;
     }
-  } catch (error) {
-    // Replay threw an error (illegal action), so divergence is detected
-    divergenceDetected = true;
   }
 
-  if (!divergenceDetected) {
+  if (firstDivergentCheckpoint === null && replayed.haltedAtTick === null) {
     return {
       ok: true,
       checkpointCount: recordedCheckpoints.length,
@@ -67,44 +65,27 @@ export function verifyReplay(
     };
   }
 
-  // Divergence detected: do per-tick comparison to find exact tick
+  // Divergence detected (either a checkpoint mismatch/missing, or the replay halted
+  // before finishing): do per-tick comparison against a live run to find the exact tick.
   const liveTicks = runSim(manifest, roster, seedRoot, { ticks, collectTickHashes: true }).tickHashes;
-  let replayTicks: RunResult["tickHashes"] = [];
-  let replayErrorTick: number | null = null;
-
-  try {
-    replayTicks = replayRun(manifest, roster, seedRoot, actionLog, ticks, true).tickHashes;
-  } catch (error) {
-    // Replay threw an error; try to extract the tick number from the error message
-    const errorMsg = (error as Error).message;
-    let match = errorMsg.match(/at tick (\d+)/);
-    if (!match) match = errorMsg.match(/tick (\d+)/);
-    if (match) {
-      replayErrorTick = parseInt(match[1]!, 10);
-    }
-  }
+  const replayTicks = replayRun(manifest, roster, seedRoot, actionLog, ticks, true).tickHashes;
 
   let firstDivergentTick: number | null = null;
-
-  // If replayTicks is empty, it means the replay threw an error before generating hashes
-  if (replayTicks.length === 0) {
-    // Use the error tick if available, otherwise assume the first tick is divergent
-    if (replayErrorTick !== null) {
-      // Assume divergence starts one tick before the error
-      firstDivergentTick = Math.max(1, replayErrorTick - 1);
-    }
-  } else {
-    // Find the first tick where hashes differ
-    for (let i = 0; i < liveTicks.length; i++) {
-      if (replayTicks[i] === undefined || liveTicks[i]!.stateHash !== replayTicks[i]!.stateHash) {
-        firstDivergentTick = liveTicks[i]!.tick;
-        break;
-      }
+  for (let i = 0; i < liveTicks.length; i++) {
+    if (replayTicks[i] === undefined || liveTicks[i]!.stateHash !== replayTicks[i]!.stateHash) {
+      firstDivergentTick = liveTicks[i]!.tick;
+      break;
     }
   }
+  if (firstDivergentTick === null && replayed.haltedAtTick !== null) {
+    // All collected replay hashes matched live, but the replay halted before producing
+    // more — the halt tick is itself the first point of divergence.
+    firstDivergentTick = replayed.haltedAtTick;
+  }
 
-  // If we detected divergence from error but don't have firstDivergentCheckpoint yet,
-  // find the first checkpoint at or after the first divergent tick
+  // If we don't yet have a divergent checkpoint (e.g. the halt occurred before any
+  // recorded checkpoint mismatched but also before the run completed), find the first
+  // recorded checkpoint at or after the first divergent tick.
   if (firstDivergentCheckpoint === null && firstDivergentTick !== null) {
     for (const checkpoint of recordedCheckpoints) {
       if (checkpoint.tick >= firstDivergentTick) {

@@ -21,6 +21,9 @@ export interface RunResult {
   checkpoints: Checkpoint[];
   events: SemanticEvent[];
   tickHashes: { tick: number; stateHash: string }[];
+  /** Tick at which the run was halted early because a replayed (injected) action was
+   * illegal, or null if the run completed all `opts.ticks`. */
+  haltedAtTick: number | null;
 }
 
 export function runSim(
@@ -36,8 +39,9 @@ export function runSim(
   const tickHashes: RunResult["tickHashes"] = [];
   const rosterById = new Map(roster.map((r) => [r.npcId, r]));
   let lastEventHash: string | null = null;
+  let haltedAtTick: number | null = null;
 
-  for (let t = 1; t <= opts.ticks; t++) {
+  tickLoop: for (let t = 1; t <= opts.ticks; t++) {
     if (seasonAt(t, manifest) !== seasonAt(t - 1, manifest)) {
       events.push({ tick: t, kind: "season_change", npcId: null, data: { season: seasonAt(t, manifest) } });
     }
@@ -69,6 +73,18 @@ export function runSim(
 
       const legal = applyAction(state, manifest, npc, action);
       if (!legal) {
+        if (injected !== undefined) {
+          // Replay mode: the log is authoritative; an illegal injected action means the
+          // claim diverged from a genuine live run somewhere upstream (e.g. a tampered
+          // earlier action shifted state so this later logged action is no longer legal).
+          // Halt immediately and return the partial result — the verifier localizes the
+          // actual first divergent tick by comparing per-tick hashes, not by inspecting
+          // this halt point. Do not throw: an illegal injected action is expected under
+          // tampering, not an engine bug.
+          haltedAtTick = t;
+          break tickLoop;
+        }
+        // Live decision (no injection): an illegal action here is a genuine engine bug.
         throw new Error(`illegal action at tick ${t} for ${npc.npcId}: ${JSON.stringify(action)}`);
       }
 
@@ -97,7 +113,7 @@ export function runSim(
     }
   }
 
-  return { finalState: state, actionLog, checkpoints, events, tickHashes };
+  return { finalState: state, actionLog, checkpoints, events, tickHashes, haltedAtTick };
 }
 
 /** Recomputes the previousEventHash chain. */

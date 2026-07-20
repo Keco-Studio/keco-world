@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { verifyReplay } from "../replay/replay.js";
 import { verifyLogChain } from "../sim/engine.js";
-import { WorldManifestS, RosterEntryS } from "../schema/core.js";
+import { WorldManifestS, RosterEntryS, SCHEMA_VERSION } from "../schema/core.js";
 import { CanonicalActionEventS, CheckpointS } from "../schema/log.js";
+import { CANON_VERSION } from "../canon/canonicalize.js";
+import { RNG_SCHEME_VERSION } from "../rng/rng.js";
 import { z } from "zod";
 
 const runDir = process.argv[2];
@@ -12,9 +14,19 @@ if (runDir === undefined) {
   process.exit(2);
 }
 
+const MetaS = z
+  .object({
+    seedRoot: z.string(),
+    ticks: z.number().int().min(1),
+    schemaVersion: z.literal(SCHEMA_VERSION),
+    canonVersion: z.literal(CANON_VERSION),
+    rngSchemeVersion: z.literal(RNG_SCHEME_VERSION),
+  })
+  .strict();
+
 const manifest = WorldManifestS.parse(JSON.parse(readFileSync(join(runDir, "manifest.json"), "utf8")));
 const roster = z.array(RosterEntryS).parse(JSON.parse(readFileSync(join(runDir, "roster.json"), "utf8")));
-const meta = JSON.parse(readFileSync(join(runDir, "meta.json"), "utf8")) as { seedRoot: string; ticks: number };
+const meta = MetaS.parse(JSON.parse(readFileSync(join(runDir, "meta.json"), "utf8")));
 const actionLog = readFileSync(join(runDir, "actions.jsonl"), "utf8")
   .split("\n")
   .filter((l) => l.length > 0)

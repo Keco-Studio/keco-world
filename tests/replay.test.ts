@@ -87,4 +87,59 @@ describe("replay", () => {
     expect(report.ok).toBe(false);
     expect(report.firstDivergentTick).toBe(tamperTick);
   });
+
+  it("pure truncation of the log tail (and matching checkpoints) is detected even though " +
+    "the live-decision fallback would otherwise regenerate an identical tail", () => {
+    const live = runSim(manifest, roster, "seed-1", { ticks: 300 });
+    const truncatedLog = live.actionLog.filter((e) => e.tick <= 200);
+    const truncatedCheckpoints = live.checkpoints.filter((c) => c.tick <= 200);
+    // Sanity: replaying the truncated log alone (not through verifyReplay) reproduces the
+    // exact same final state as the live run — this is the escape the fix must close.
+    const replayed = replayRun(manifest, roster, "seed-1", truncatedLog, 300);
+    expect(hashCanonical(replayed.finalState)).toBe(hashCanonical(live.finalState));
+
+    const report = verifyReplay(manifest, roster, "seed-1", truncatedLog, truncatedCheckpoints, 300);
+    expect(report.ok).toBe(false);
+    // First tick not covered by either the truncated log or the truncated checkpoints:
+    // the log stops covering after tick 200, so the first missing event is at tick 201.
+    expect(report.firstDivergentTick).toBe(201);
+    expect(report.firstDivergentCheckpoint).toBe(250);
+  });
+
+  it("final-entry tamper after truncation (hash chain recomputed) is detected via log " +
+    "completeness, not just chain validity", () => {
+    const live = runSim(manifest, roster, "seed-1", { ticks: 300 });
+    const idx = live.actionLog.findIndex((e) => e.tick > 100 && e.tick <= 200 && e.action.verb === "move");
+    expect(idx).toBeGreaterThan(-1);
+    const tamperTick = live.actionLog[idx]!.tick;
+
+    // Truncate everything after idx, then tamper the new last entry to a different legal
+    // action, and recompute the hash chain downstream from there (there is nothing
+    // downstream left, so the chain is trivially valid — previousEventHash pointers up to
+    // idx are untouched).
+    const truncatedLog = live.actionLog.slice(0, idx + 1).map((e) => ({ ...e, action: { ...e.action } }));
+    truncatedLog[idx]!.action = { verb: "idle" };
+    const truncatedCheckpoints = live.checkpoints.filter((c) => c.tick <= tamperTick);
+
+    const report = verifyReplay(manifest, roster, "seed-1", truncatedLog, truncatedCheckpoints, 300);
+    expect(report.ok).toBe(false);
+    expect(report.firstDivergentTick).toBe(tamperTick);
+  });
+
+  it("an extra (unexpected) checkpoint is detected", () => {
+    const live = runSim(manifest, roster, "seed-1", { ticks: 300 });
+    const withExtra = [...live.checkpoints];
+    withExtra.splice(2, 0, { tick: 125, stateHash: live.checkpoints[1]!.stateHash });
+    const report = verifyReplay(manifest, roster, "seed-1", live.actionLog, withExtra, 300);
+    expect(report.ok).toBe(false);
+    expect(report.firstDivergentCheckpoint).toBe(125);
+  });
+
+  it("a missing middle checkpoint is detected", () => {
+    const live = runSim(manifest, roster, "seed-1", { ticks: 300 });
+    const missingMiddle = live.checkpoints.filter((c) => c.tick !== 150);
+    const report = verifyReplay(manifest, roster, "seed-1", live.actionLog, missingMiddle, 300);
+    expect(report.ok).toBe(false);
+    expect(report.firstDivergentCheckpoint).toBe(150);
+  });
 });

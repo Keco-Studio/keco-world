@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { breed, type NpcGenome } from "../src/life/genome.js";
+import { breed, type NpcGenome, EPSILON_JITTER } from "../src/life/genome.js";
 import { IdentityS, PolicyS, BeliefS } from "../src/schema/core.js";
 import { makeTestRoster, makeTestBelief } from "./helpers.js";
 
@@ -51,5 +51,24 @@ describe("breed", () => {
     const kids = Array.from({ length: 30 }, (_, k) => breed(hi, lo, `c${k}`, "seed-1", 1).policy.utilityWeights.forage);
     expect(kids.some((f) => f > 700)).toBe(true);
     expect(kids.some((f) => f < 300)).toBe(true);
+  });
+  it("epsilon jitter respects EPSILON_JITTER bound (±40)", () => {
+    const epsilon = 500;
+    const parentWithEpsilon = { ...A, policy: { ...A.policy, deliberationEpsilon: epsilon } };
+    const childKeys = Array.from({ length: 300 }, (_, k) => `epsilon-child-${k}`);
+    const childEpsilons = childKeys.map((key) =>
+      breed(parentWithEpsilon, parentWithEpsilon, key, "seed-epsilon", 500).policy.deliberationEpsilon
+    );
+
+    const minBound = epsilon - EPSILON_JITTER;
+    const maxBound = epsilon + EPSILON_JITTER;
+
+    for (const eps of childEpsilons) {
+      expect(eps).toBeGreaterThanOrEqual(minBound);
+      expect(eps).toBeLessThanOrEqual(maxBound);
+    }
+  });
+  it("EPSILON_JITTER constant is exported and equals 40", () => {
+    expect(EPSILON_JITTER).toBe(40);
   });
 });

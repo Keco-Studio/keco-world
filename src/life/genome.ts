@@ -50,7 +50,7 @@ export function breed(parentA: NpcGenome, parentB: NpcGenome, childKey: string, 
   // Policy: per utility-weight key and per threshold key
   const utilityWeights: Record<UtilityKey, number> = breedUtilityWeights(seedRoot, childKey, parentA.policy.utilityWeights, parentB.policy.utilityWeights);
   const thresholds: { hungerUrgent: number } = breedThresholds(seedRoot, childKey, parentA.policy.thresholds, parentB.policy.thresholds);
-  const deliberationEpsilon = breedPolicyField(seedRoot, childKey, "deliberationEpsilon", parentA.policy.deliberationEpsilon, parentB.policy.deliberationEpsilon);
+  const deliberationEpsilon = breedPolicyField(seedRoot, childKey, "deliberationEpsilon", parentA.policy.deliberationEpsilon, parentB.policy.deliberationEpsilon, EPSILON_JITTER);
 
   const policy: Policy = {
     utilityWeights,
@@ -79,7 +79,7 @@ function breedIdentityField(seedRoot: string, childKey: string, fieldName: strin
   return clamp(value, 0, 1000);
 }
 
-function breedPolicyField(seedRoot: string, childKey: string, fieldName: string, valueA: number, valueB: number): number {
+function breedPolicyField(seedRoot: string, childKey: string, fieldName: string, valueA: number, valueB: number, jitterAmount: number = POLICY_JITTER): number {
   // Pick parent
   const parentIdx = drawInt(seedRoot, 2, "breed", childKey, "policy", fieldName, "pick");
   let value = parentIdx === 0 ? valueA : valueB;
@@ -87,7 +87,7 @@ function breedPolicyField(seedRoot: string, childKey: string, fieldName: string,
   // Mutation roll
   const mutRoll = drawInt(seedRoot, 1_000_000, "breed", childKey, "policy", fieldName, "mut");
   if (mutRoll < POLICY_MUT_PPM) {
-    const jit = jitter(seedRoot, POLICY_JITTER, "breed", childKey, "policy", fieldName, "jitter");
+    const jit = jitter(seedRoot, jitterAmount, "breed", childKey, "policy", fieldName, "jitter");
     value = value + jit;
   }
 
@@ -152,7 +152,7 @@ function inheritBeliefs(seedRoot: string, childKey: string, tick: number, parent
     if (b.confidence !== a.confidence) {
       return b.confidence - a.confidence;
     }
-    return a.proposition.localeCompare(b.proposition);
+    return a.proposition < b.proposition ? -1 : a.proposition > b.proposition ? 1 : 0;
   });
 
   // Truncate to CULT_POOL_MAX

@@ -77,7 +77,7 @@ export function beliefFormationStep(state: WorldState, events: SemanticEvent[], 
     } else if (event.kind === "starving") {
       // Rule 2: starving on an NPC with hp < 500 → reinforce-or-add forage belief
       const npc = state.npcs.find((n) => n.npcId === event.npcId);
-      if (npc && npc.hp < 500) {
+      if (npc && npc.alive && npc.hp < 500) {
         const belief: Belief = {
           proposition: "hunger comes fast; gather while you can",
           effect: { target: "w:forage", modifier: 100, condition: null },

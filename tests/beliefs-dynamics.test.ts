@@ -61,4 +61,15 @@ describe("belief dynamics", () => {
     expect(b).toBeDefined();
     expect(s.npcs[1]!.beliefs.length).toBe(0);    // healthy npc (hp 1000) unaffected
   });
+  it("dead npc never gains beliefs from starving events", () => {
+    const { s, npc } = fresh();
+    s.tick = 150;
+    npc.alive = false;
+    npc.hp = 0;
+    const events: SemanticEvent[] = [];
+    const tickEvents: SemanticEvent[] = [{ tick: 150, kind: "starving", npcId: npc.npcId, data: {} }];
+    beliefFormationStep(s, events, tickEvents);
+    expect(npc.beliefs.length).toBe(0);
+    expect(events.some((e) => e.kind === "belief_formed" && e.npcId === npc.npcId)).toBe(false);
+  });
 });

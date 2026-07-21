@@ -39,6 +39,20 @@ if (hasFlag("harvest-only")) {
   for (const [seed, n] of bySeed) console.log(`  ${seed}: ${n}`);
   const gaps = triggers.map((t) => t.gap).sort((a, b) => a - b);
   console.log(`gap distribution: min ${gaps[0]}, median ${gaps[Math.floor(gaps.length / 2)]}, max ${gaps[gaps.length - 1]}`);
+  console.log(`tick coverage of sampled triggers (buckets of 100, cap ${params.capPerSeed}/seed):`);
+  if (triggers.length === 0) {
+    console.log(`  (no triggers)`);
+  } else {
+    const buckets = new Map<number, number>();
+    for (const t of triggers) {
+      const bucket = Math.floor(t.tick / 100) * 100;
+      buckets.set(bucket, (buckets.get(bucket) ?? 0) + 1);
+    }
+    const maxBucket = Math.max(...buckets.keys());
+    for (let b = 0; b <= maxBucket; b += 100) {
+      console.log(`  ticks ${b}-${b + 99}: ${buckets.get(b) ?? 0}`);
+    }
+  }
   process.exit(0);
 }
 

@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { WorldManifest, RosterEntry } from "../schema/core.js";
 import { findTriggers, type TriggerPoint } from "./trigger.js";
 import { renderPrompt } from "./prompt.js";
@@ -6,6 +6,7 @@ import { evaluatePair, actionsEqual } from "./rollout.js";
 import { wilson, percentile } from "./stats.js";
 import { drawInt } from "../rng/rng.js";
 import type { DeliberationRuntime } from "./runtime.js";
+import { hashCanonical } from "../canon/canonicalize.js";
 
 export interface BenchParams {
   seeds: string[];
@@ -48,14 +49,40 @@ export interface ModelSummary {
   verdict: "gain" | "no-gain" | "insufficient-n";
 }
 
+/**
+ * Deterministic even sampling across the full list: index k of `cap` maps to
+ * floor(k * xs.length / cap), so the sample spans the entire input in order
+ * instead of being biased toward the head (as a plain `.slice(0, cap)` would be).
+ */
+export function sampleEvenly<T>(xs: T[], cap: number): T[] {
+  if (xs.length <= cap) return xs;
+  const out: T[] = [];
+  for (let k = 0; k < cap; k++) {
+    out.push(xs[Math.floor((k * xs.length) / cap)]!);
+  }
+  return out;
+}
+
 export function harvestAll(
   manifest: WorldManifest, roster: RosterEntry[], params: BenchParams,
 ): TriggerPoint[] {
   const all: TriggerPoint[] = [];
   for (const seed of params.seeds) {
-    all.push(...findTriggers(manifest, roster, seed, params.ticks, params.epsilon).slice(0, params.capPerSeed));
+    all.push(...sampleEvenly(findTriggers(manifest, roster, seed, params.ticks, params.epsilon), params.capPerSeed));
   }
   return all;
+}
+
+/** Fingerprint of everything that determines trial outcomes, for resume-safety (see runBenchForModel). */
+function paramsFingerprint(manifest: WorldManifest, roster: RosterEntry[], params: BenchParams): string {
+  return hashCanonical({
+    marginVersion: "margin-v1",
+    horizonTicks: params.horizonTicks,
+    epsilon: params.epsilon,
+    ticks: params.ticks,
+    manifest,
+    roster,
+  });
 }
 
 function npcName(roster: RosterEntry[], npcId: string): string {
@@ -86,11 +113,36 @@ export async function runBenchForModel(
   onProgress?: (done: number, total: number) => void,
 ): Promise<TrialRecord[]> {
   const done = new Map<string, TrialRecord>();
-  if (persistPath !== null && existsSync(persistPath)) {
-    for (const line of readFileSync(persistPath, "utf8").split("\n")) {
-      if (line.length === 0) continue;
-      const rec = JSON.parse(line) as TrialRecord;
-      done.set(`${rec.model}|${rec.triggerId}`, rec);
+  if (persistPath !== null) {
+    const metaPath = `${persistPath}.meta.json`;
+    const fingerprint = paramsFingerprint(manifest, roster, params);
+    if (existsSync(metaPath)) {
+      const meta = JSON.parse(readFileSync(metaPath, "utf8")) as { fingerprint: string };
+      if (meta.fingerprint !== fingerprint) {
+        throw new Error(
+          `Resume fingerprint mismatch at ${metaPath}: the persisted trials were produced with ` +
+          `different params (horizonTicks/epsilon/ticks/manifest/roster). Resuming would silently ` +
+          `mix incompatible rollout outcomes into this run. Use a fresh --out directory instead.`,
+        );
+      }
+    } else {
+      writeFileSync(metaPath, JSON.stringify({ fingerprint }) + "\n");
+    }
+    if (existsSync(persistPath)) {
+      const lines = readFileSync(persistPath, "utf8").split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]!;
+        if (line.length === 0) continue;
+        try {
+          const rec = JSON.parse(line) as TrialRecord;
+          done.set(`${rec.model}|${rec.triggerId}`, rec);
+        } catch {
+          console.warn(
+            `skipping malformed JSONL line ${i + 1} in ${persistPath} (likely a crash-truncated ` +
+            `final write); its trial will re-run`,
+          );
+        }
+      }
     }
   }
   const results: TrialRecord[] = [];

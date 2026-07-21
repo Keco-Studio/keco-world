@@ -1,11 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { describe, it, expect, vi } from "vitest";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { harvestAll, runBenchForModel, summarize, randomArmSummary } from "../src/bench/orchestrate.js";
+import { harvestAll, runBenchForModel, summarize, randomArmSummary, sampleEvenly } from "../src/bench/orchestrate.js";
 import { MockRuntime } from "../src/bench/runtime.js";
 import { actionsEqual } from "../src/bench/rollout.js";
 import { makeTestManifest, makeTestRoster } from "./helpers.js";
+import { makeDemoManifest, makeDemoRoster } from "../src/cli/demo.js";
 import type { BenchParams } from "../src/bench/orchestrate.js";
 
 const manifest = makeTestManifest();
@@ -65,6 +66,64 @@ describe("orchestrator", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("throws on resume when params fingerprint changed (I1)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bench-fp-"));
+    const file = join(dir, "trials.jsonl");
+    const rt = new MockRuntime(() => 1);
+    await runBenchForModel(manifest, roster, params, triggers, rt, file);
+    const changedParams: BenchParams = { ...params, horizonTicks: 100 };
+    let caught: unknown;
+    try {
+      await runBenchForModel(manifest, roster, changedParams, triggers, rt, file);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain(`${file}.meta.json`);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("skips a truncated trailing JSONL line on resume and re-runs only that trial (I2)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bench-trunc-"));
+    const file = join(dir, "trials.jsonl");
+    const rt = new MockRuntime(() => 1);
+    const complete = triggers.slice(0, triggers.length - 1);
+    const missing = triggers[triggers.length - 1]!;
+    await runBenchForModel(manifest, roster, params, complete, rt, file);
+    // Simulate a crash mid-write: a partial JSON object with no trailing newline.
+    appendFileSync(file, `{"trigger`);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let called = 0;
+    const counting = new MockRuntime(() => { called++; return 1; });
+    const resumed = await runBenchForModel(manifest, roster, params, triggers, counting, file);
+    expect(called).toBe(1);
+    expect(resumed.length).toBe(triggers.length);
+    expect(resumed.find((r) => r.triggerId === missing.id)).toBeDefined();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]![0]).toContain("line");
+    warnSpy.mockRestore();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("failure trials persist and resume without re-invoking the runtime (M1)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bench-fail-"));
+    const file = join(dir, "trials.jsonl");
+    const failing = new MockRuntime(() => null);
+    const first = await runBenchForModel(manifest, roster, params, triggers, failing, file);
+    expect(first.length).toBe(triggers.length);
+    for (const rec of first) {
+      expect(rec.error).not.toBeNull();
+      expect(rec.agreed).toBeNull();
+      expect(rec.outcome).toBeNull();
+    }
+    let called = 0;
+    const counting = new MockRuntime(() => { called++; return null; });
+    const second = await runBenchForModel(manifest, roster, params, triggers, counting, file);
+    expect(called).toBe(0);
+    expect(second).toEqual(first);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("summarize computes verdicts per the preregistered gate", () => {
     const mk = (outcome: "win" | "loss" | "tie" | null, agreed: boolean | null): Parameters<typeof summarize>[1][number] => ({
       triggerId: "x", model: "m", displayChoice: 1, chosenIndex: 0, agreed,
@@ -87,5 +146,43 @@ describe("orchestrator", () => {
     expect(a).toEqual(b);
     expect(a.model).toBe("random-control");
     expect(a.divergent).toBeGreaterThan(0);
+  });
+});
+
+describe("sampleEvenly", () => {
+  it("returns the input unchanged when already at or under the cap", () => {
+    expect(sampleEvenly([1, 2, 3], 5)).toEqual([1, 2, 3]);
+    expect(sampleEvenly([1, 2, 3], 3)).toEqual([1, 2, 3]);
+  });
+
+  it("caps the length and is deterministic", () => {
+    const xs = Array.from({ length: 8986 }, (_, i) => i);
+    const a = sampleEvenly(xs, 200);
+    const b = sampleEvenly(xs, 200);
+    expect(a.length).toBe(200);
+    expect(a).toEqual(b);
+  });
+
+  it("spans the full input instead of biasing toward the head", () => {
+    const xs = Array.from({ length: 8986 }, (_, i) => i);
+    const sampled = sampleEvenly(xs, 200);
+    expect(sampled[0]).toBe(0);
+    expect(sampled[sampled.length - 1]!).toBeGreaterThan(xs.length * 0.9);
+  });
+
+  it("harvestAll on a real 800-tick sim spans well beyond the head of the trigger sequence (C1)", () => {
+    const demoManifest = makeDemoManifest();
+    const demoRoster = makeDemoRoster("bench-roster");
+    const demoParams: BenchParams = {
+      seeds: ["bench-1"], ticks: 800, epsilon: 60, horizonTicks: 100, timeoutMs: 1000, capPerSeed: 200,
+    };
+    const sampled = harvestAll(demoManifest, demoRoster, demoParams);
+    expect(sampled.length).toBe(200);
+    const ticks = sampled.map((t) => t.tick);
+    const minTick = Math.min(...ticks);
+    const maxTick = Math.max(...ticks);
+    // A head-slice (the C1 bug) would keep everything within the first ~13 ticks.
+    expect(maxTick).toBeGreaterThan(minTick * 10);
+    expect(maxTick).toBeGreaterThan(700);
   });
 });

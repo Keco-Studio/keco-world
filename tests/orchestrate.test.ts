@@ -182,7 +182,8 @@ describe("sampleEvenly", () => {
     const minTick = Math.min(...ticks);
     const maxTick = Math.max(...ticks);
     // A head-slice (the C1 bug) would keep everything within the first ~13 ticks.
+    // With reproduction now happening, trigger distribution changes but should still span well.
     expect(maxTick).toBeGreaterThan(minTick * 10);
-    expect(maxTick).toBeGreaterThan(700);
+    expect(maxTick).toBeGreaterThan(600);  // Ensure well into the run (was 700, adjusted for reproduction RNG)
   });
 });

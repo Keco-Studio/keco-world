@@ -2,14 +2,14 @@ import type { WorldManifest, RosterEntry } from "../schema/core.js";
 import type { Action, CanonicalActionEvent, Checkpoint, SemanticEvent } from "../schema/log.js";
 import type { WorldState } from "../world/state.js";
 import { createInitialState, seasonAt } from "../world/state.js";
-import { environmentStep, needsStep } from "../world/rules.js";
+import { environmentStep, needsStep, reproductionStep } from "../world/rules.js";
 import { applyAction } from "../world/actions.js";
 import type { Observation } from "../mind/observe.js";
 import { buildObservation } from "../mind/observe.js";
 import { reflexDecide } from "../mind/reflex.js";
 import { scoreCandidates, type ScoredCandidate } from "../mind/utility.js";
 import { resolve } from "../mind/resolver.js";
-import { applyBeliefs } from "../mind/beliefs.js";
+import { applyBeliefs, decayBeliefs, beliefFormationStep } from "../mind/beliefs.js";
 import { hashCanonical } from "../canon/canonicalize.js";
 
 export interface DecideInfo {
@@ -28,6 +28,8 @@ export interface RunOptions {
   collectTickHashes?: boolean;
   /** Read-only observer of every NPC decision (after decide, before apply). MUST NOT mutate. */
   onDecide?: (info: DecideInfo) => void;
+  /** When false, skips actionLog pushes but keeps hash chain computation (default: true). */
+  retainActionLog?: boolean;
 }
 
 export interface RunResult {
@@ -56,13 +58,20 @@ export function runSim(
   let haltedAtTick: number | null = null;
 
   tickLoop: for (let t = 1; t <= opts.ticks; t++) {
+    const retainLog = opts.retainActionLog !== false; // default true
+
+    // Record event index at tick start (before any events added) for belief formation
+    const evStart = events.length;
+
     if (seasonAt(t, manifest) !== seasonAt(t - 1, manifest)) {
       events.push({ tick: t, kind: "season_change", npcId: null, data: { season: seasonAt(t, manifest) } });
     }
     state.tick = t;
     environmentStep(state, manifest, seedRoot, events);
 
-    for (const npc of state.npcs) {
+    // Decision loop: iterate over snapshot so newborns never act on their birth tick
+    const actors = [...state.npcs];
+    for (const npc of actors) {
       if (!npc.alive) continue;
       const obs = buildObservation(state, manifest, npc);
       const observationHash = hashCanonical(obs);
@@ -125,10 +134,25 @@ export function runSim(
         previousEventHash: lastEventHash,
       };
       lastEventHash = hashCanonical(event);
-      actionLog.push(event);
+      if (retainLog) {
+        actionLog.push(event);
+      }
     }
 
     needsStep(state, manifest, events);
+
+    // Decay beliefs for each alive NPC
+    for (const npc of state.npcs) {
+      if (!npc.alive) continue;
+      decayBeliefs(npc, t);
+    }
+
+    // Belief formation from this tick's events (slice to avoid beliefFormationStep's own emissions)
+    const eventsThisTick = events.slice(evStart);
+    beliefFormationStep(state, events, eventsThisTick);
+
+    // Reproduction: births add new NPCs
+    reproductionStep(state, manifest, seedRoot, events);
 
     if (t % manifest.checkpointInterval === 0) {
       checkpoints.push({ tick: t, stateHash: hashCanonical(state) });

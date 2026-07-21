@@ -1,4 +1,4 @@
-import type { WorldManifest, RosterEntry } from "../src/schema/core.js";
+import type { WorldManifest, RosterEntry, Belief } from "../src/schema/core.js";
 import { SCHEMA_VERSION } from "../src/schema/core.js";
 
 export function makeTestManifest(overrides: Partial<WorldManifest> = {}): WorldManifest {
@@ -26,6 +26,16 @@ export function makeTestManifest(overrides: Partial<WorldManifest> = {}): WorldM
       { id: "bush-2", pos: { x: 10, y: 3 }, capacity: 5 },
     ],
     wolfStart: { x: 15, y: 15 },
+    adultAgeTicks: 100,
+    elderAgeTicks: 400,
+    senescenceHpDrain: 5,
+    reproEnergyMin: 600,
+    reproEnergyCost: 200,
+    reproCooldownTicks: 150,
+    birthChancePpm: 100_000,
+    maxPopulation: 40,
+    childStartHp: 600,
+    childStartEnergy: 600,
     ...overrides,
   };
 }
@@ -38,6 +48,20 @@ export function makeTestRoster(n: number): RosterEntry[] {
     policy: {
       utilityWeights: { forage: 600, consume: 800, shelter: 700, explore: 200, idle: 50 },
       thresholds: { hungerUrgent: 150 },
+      deliberationEpsilon: 60,
     },
+    beliefs: [],
   }));
+}
+
+export function makeTestBelief(overrides: Partial<Belief> = {}): Belief {
+  return {
+    proposition: "berries matter",
+    effect: { target: "w:forage", modifier: 100, condition: null },
+    confidence: 800,
+    source: "observed",
+    acquiredTick: 0,
+    decayPer100: 20,
+    ...overrides,
+  };
 }

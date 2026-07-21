@@ -6,7 +6,7 @@ const validWeights = { forage: 500, consume: 800, shelter: 600, explore: 200, id
 
 describe("core schemas", () => {
   it("accepts a valid policy", () => {
-    const p = PolicyS.parse({ utilityWeights: validWeights, thresholds: { hungerUrgent: 150 } });
+    const p = PolicyS.parse({ utilityWeights: validWeights, thresholds: { hungerUrgent: 150 }, deliberationEpsilon: 60 });
     expect(p.utilityWeights.forage).toBe(500);
   });
   it("rejects unknown utility weight keys (closed key set, P4)", () => {
@@ -14,6 +14,7 @@ describe("core schemas", () => {
       PolicyS.parse({
         utilityWeights: { ...validWeights, hoard: 100 },
         thresholds: { hungerUrgent: 150 },
+        deliberationEpsilon: 60,
       }),
     ).toThrow();
   });
@@ -22,6 +23,7 @@ describe("core schemas", () => {
       PolicyS.parse({
         utilityWeights: { ...validWeights, forage: 1001 },
         thresholds: { hungerUrgent: 150 },
+        deliberationEpsilon: 60,
       }),
     ).toThrow();
   });
@@ -29,7 +31,7 @@ describe("core schemas", () => {
     expect(UTILITY_KEYS).toEqual(["forage", "consume", "shelter", "explore", "idle"]);
   });
   it("manifest requires schemaVersion", () => {
-    expect(SCHEMA_VERSION).toBe("phase0-v1");
+    expect(SCHEMA_VERSION).toBe("phase1a-v1");
     expect(() => WorldManifestS.parse({})).toThrow();
   });
 });

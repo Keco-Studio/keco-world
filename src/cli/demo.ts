@@ -35,6 +35,16 @@ export function makeDemoManifest(): WorldManifest {
     shelters: [{ x: 6, y: 6 }, { x: 25, y: 8 }, { x: 15, y: 26 }],
     bushes,
     wolfStart: { x: 31, y: 31 },
+    adultAgeTicks: 100,
+    elderAgeTicks: 400,
+    senescenceHpDrain: 5,
+    reproEnergyMin: 600,
+    reproEnergyCost: 200,
+    reproCooldownTicks: 150,
+    birthChancePpm: 100_000,
+    maxPopulation: 40,
+    childStartHp: 600,
+    childStartEnergy: 600,
   };
 }
 
@@ -65,7 +75,9 @@ export function makeDemoRoster(seedRoot: string): RosterEntry[] {
           idle: vary(seedRoot, 50, 40, "w-idle", i),
         },
         thresholds: { hungerUrgent: vary(seedRoot, 150, 100, "t-hunger", i) },
+        deliberationEpsilon: vary(seedRoot, 60, 40, "w-epsilon", i),
       },
+      beliefs: [],
     };
   });
 }

@@ -1,9 +1,30 @@
 import { z } from "zod";
 
-export const SCHEMA_VERSION = "phase0-v1";
+export const SCHEMA_VERSION = "phase1a-v1";
 
 const Int = z.number().int();
 const Milli = Int.min(0).max(1000); // 0..1000 fixed-point "per-mille" scale
+
+export const EFFECT_TARGETS = ["w:forage", "w:consume", "w:shelter", "w:explore", "w:idle", "t:hungerUrgent"] as const;
+export type EffectTarget = (typeof EFFECT_TARGETS)[number];
+
+export const BeliefS = z
+  .object({
+    proposition: z.string().max(200),
+    effect: z
+      .object({
+        target: z.enum(EFFECT_TARGETS),
+        modifier: Int.min(-300).max(300),
+        condition: z.enum(["winter", "summer"]).nullable(),
+      })
+      .strict(),
+    confidence: Milli,
+    source: z.enum(["observed", "parentA", "parentB"]),
+    acquiredTick: Int,
+    decayPer100: Int.min(0).max(100),
+  })
+  .strict();
+export type Belief = z.infer<typeof BeliefS>;
 
 export const Vec2S = z.object({ x: Int, y: Int }).strict();
 export type Vec2 = z.infer<typeof Vec2S>;
@@ -31,12 +52,13 @@ export const PolicyS = z
   .object({
     utilityWeights: UtilityWeightsS,
     thresholds: z.object({ hungerUrgent: Milli }).strict(),
+    deliberationEpsilon: Milli,
   })
   .strict();
 export type Policy = z.infer<typeof PolicyS>;
 
 export const RosterEntryS = z
-  .object({ npcId: z.string(), name: z.string(), identity: IdentityS, policy: PolicyS })
+  .object({ npcId: z.string(), name: z.string(), identity: IdentityS, policy: PolicyS, beliefs: z.array(BeliefS).max(16) })
   .strict();
 export type RosterEntry = z.infer<typeof RosterEntryS>;
 
@@ -62,6 +84,16 @@ export const WorldManifestS = z
     shelters: z.array(Vec2S),
     bushes: z.array(z.object({ id: z.string(), pos: Vec2S, capacity: Int.min(1) }).strict()),
     wolfStart: Vec2S,
+    adultAgeTicks: Int.min(0),
+    elderAgeTicks: Int.min(0),
+    senescenceHpDrain: Int.min(0),
+    reproEnergyMin: Int.min(0),
+    reproEnergyCost: Int.min(0),
+    reproCooldownTicks: Int.min(0),
+    birthChancePpm: Int.min(0).max(1_000_000),
+    maxPopulation: Int.min(1),
+    childStartHp: Int.min(1),
+    childStartEnergy: Int.min(0),
   })
   .strict();
 export type WorldManifest = z.infer<typeof WorldManifestS>;

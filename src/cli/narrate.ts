@@ -11,5 +11,9 @@ export function narrate(event: SemanticEvent, names: Map<string, string>): strin
       return `[tick ${event.tick}] ${who} is starving.`;
     case "season_change":
       return `[tick ${event.tick}] The season turned to ${event.data["season"]}.`;
+    case "birth":
+      return `[tick ${event.tick}] ${who} was born (gen ${event.data["generation"]}).`;
+    case "belief_formed":
+      return `[tick ${event.tick}] ${who} learned something (${event.data["target"]}).`;
   }
 }

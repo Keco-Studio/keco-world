@@ -14,9 +14,10 @@ function arg(name: string, fallback: string): string {
 }
 const hasFlag = (name: string) => process.argv.includes(`--${name}`);
 
-const models = arg("models", "qwen3:0.6b,qwen3:1.7b,qwen3:4b").split(",").map((m) => m.trim());
+const models = arg("models", "qwen3:0.6b,qwen3:1.7b,qwen3:4b").split(",").map((m) => m.trim()).filter((m) => m.length > 0);
 const seedCount = parseInt(arg("seeds", "8"), 10);
 const label = arg("label", "dev");
+const minDecisive = parseInt(arg("min-decisive", "300"), 10);
 const params: BenchParams = {
   seeds: Array.from({ length: seedCount }, (_, i) => `bench-${i + 1}`),
   ticks: parseInt(arg("ticks", "800"), 10),
@@ -53,7 +54,7 @@ for (const model of models) {
     if (d % 25 === 0 || d === t) process.stdout.write(`\r  ${d}/${t}`);
   });
   console.log();
-  summaries.push(summarize(model, trials, 100));
+  summaries.push(summarize(model, trials, minDecisive));
 }
 
 console.log(`\n=== random-control`);

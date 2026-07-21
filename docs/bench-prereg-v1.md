@@ -12,7 +12,7 @@
 | 世界 | makeDemoManifest()，roster seed "bench-roster" |
 | seeds | bench-1 … bench-8 |
 | ticks/seed | 800（2 个完整季节） |
-| epsilon | 校准后填入：＿＿（用 --harvest-only 校准，目标 ≥1500 总触发；校准只看数量分布，不看任何 LLM 结果；同时须检查 --harvest-only 打印的 tick 覆盖直方图——采样必须跨全程分布，不能只集中在前几十 tick） |
+| epsilon | **60（已冻结，2026-07-21 校准）** | 校准证据：--harvest-only 全 8 seed × 800 tick → 1600 触发（每 seed 均达 cap 200），gap 分布 min 0 / median 15 / max 60；tick 覆盖直方图（桶=100 tick）：305/331/348/339/178/55/14/30——跨全程分布，含 277 个冬季（≥400 tick）触发；后段稀疏与 NPC 存活衰减一致。校准只看了数量与分布，未接触任何 LLM 结果。 |
 | capPerSeed | 200 | 均匀跨程采样（sampleEvenly，非头部截断） |
 | horizon H | 100 tick |
 | margin | alive ? 10000 + hp + energy + 100×berries : (deathTick − triggerTick) |

@@ -50,7 +50,6 @@ export function runSim(
   const checkpoints: Checkpoint[] = [];
   const events: SemanticEvent[] = [];
   const tickHashes: RunResult["tickHashes"] = [];
-  const rosterById = new Map(roster.map((r) => [r.npcId, r]));
   let lastEventHash: string | null = null;
   let haltedAtTick: number | null = null;
 
@@ -63,8 +62,6 @@ export function runSim(
 
     for (const npc of state.npcs) {
       if (!npc.alive) continue;
-      const entry = rosterById.get(npc.npcId);
-      if (entry === undefined) throw new Error(`npc ${npc.npcId} missing from roster`);
       const obs = buildObservation(state, manifest, npc);
       const observationHash = hashCanonical(obs);
 
@@ -75,12 +72,12 @@ export function runSim(
       if (injected !== undefined) {
         ({ action, actionSource } = injected);
       } else {
-        const reflex = reflexDecide(obs, entry.policy);
+        const reflex = reflexDecide(obs, npc.policy);
         if (reflex !== null) {
           action = reflex;
           actionSource = "reflex";
         } else {
-          cands = scoreCandidates(obs, entry.identity, entry.policy, manifest, seedRoot);
+          cands = scoreCandidates(obs, npc.identity, npc.policy, manifest, seedRoot);
           const best = pickBest(cands);
           action = best.action;
           actionSource = "utility";

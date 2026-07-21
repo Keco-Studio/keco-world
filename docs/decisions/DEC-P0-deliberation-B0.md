@@ -3,7 +3,7 @@
 **日期** 2026-07-21
 **依据** docs/bench-prereg-v1.md（预注册方案 v1，参数运行前全部冻结）
 **数据** docs/bench-results/official-v1/（报告 + 全部 4800 条 trial 审计记录）
-**对应** living-worlds-v0.5.md §18 P0 第一条、§6.2 B0 回退设计
+**对应** living-worlds.md §18 P0 第一条、§6.2 B0 回退设计
 
 ## 结果
 

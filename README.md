@@ -22,6 +22,11 @@ replay verification with tick-level divergence localization.
 
 ## Design docs
 
-- `docs/review-v0.4.1.md` — critique of design doc v0.4.1
-- `docs/proposals-v0.5.md` — adopted proposals P1–P5 (P4 fields appear in the log schema)
-- `docs/bench-prereg-v1.md` — preregistered deliberation-gain judgment (P0)
+Single-version policy: `docs/living-worlds.md` is the one authoritative spec; historical versions live in git history. One-off records (reviews, decisions, preregistrations) are separate immutable files.
+
+- `docs/living-worlds.md` — the design document (current: v0.5.1)
+- `docs/review-v0.4.1.md` — critique of the v0.4.1 draft (historical record)
+- `docs/proposals-v0.5.md` — adopted proposals P1–P5 (historical record)
+- `docs/bench-prereg-v1.md` — preregistered deliberation-gain judgment (frozen protocol)
+- `docs/decisions/` — decision records (DEC-P0 → B0)
+- `docs/bench-results/` — official benchmark reports + audit trails

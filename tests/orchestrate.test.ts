@@ -2,12 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { harvestAll, runBenchForModel, summarize, randomArmSummary, sampleEvenly } from "../src/bench/orchestrate.js";
+import { harvestAll, runBenchForModel, summarize, randomArmSummary, sampleEvenly, sampleByTick } from "../src/bench/orchestrate.js";
 import { MockRuntime } from "../src/bench/runtime.js";
 import { actionsEqual } from "../src/bench/rollout.js";
 import { makeTestManifest, makeTestRoster } from "./helpers.js";
 import { makeDemoManifest, makeDemoRoster } from "../src/cli/demo.js";
 import type { BenchParams } from "../src/bench/orchestrate.js";
+import type { TriggerPoint } from "../src/bench/trigger.js";
 
 const manifest = makeTestManifest();
 const roster = makeTestRoster(5);
@@ -182,8 +183,75 @@ describe("sampleEvenly", () => {
     const minTick = Math.min(...ticks);
     const maxTick = Math.max(...ticks);
     // A head-slice (the C1 bug) would keep everything within the first ~13 ticks.
-    // With reproduction now happening, trigger distribution changes but should still span well.
+    // Reproduction (Task 9) changes trigger density over time (more triggers early,
+    // thinning toward the tail as the population stabilizes) -- drawInt itself is
+    // stateless, so this is a trajectory-driven density shift, not an "RNG state
+    // shift". Index-uniform sampling (sampleEvenly) under-represents the tail under
+    // that density change; tick-stratified sampling (sampleByTick) fixes it by
+    // targeting evenly spaced ticks instead of evenly spaced indices.
     expect(maxTick).toBeGreaterThan(minTick * 10);
-    expect(maxTick).toBeGreaterThan(600);  // Ensure well into the run (was 700, adjusted for reproduction RNG)
+    expect(maxTick).toBeGreaterThan(700);
+  });
+});
+
+describe("sampleByTick", () => {
+  it("returns the input unchanged when already at or under the cap", () => {
+    expect(sampleByTick([1, 2, 3] as unknown as TriggerPoint[], 5, 3)).toEqual([1, 2, 3]);
+    expect(sampleByTick([1, 2, 3] as unknown as TriggerPoint[], 3, 3)).toEqual([1, 2, 3]);
+  });
+
+  it("spreads samples uniformly across tick space on a dense synthetic list", () => {
+    const xs: TriggerPoint[] = Array.from({ length: 1000 }, (_, i) => ({
+      id: `t:${i + 1}`, seedRoot: "t", tick: i + 1, npcId: "n",
+      observation: {} as TriggerPoint["observation"], candidates: [], bestIndex: 0, gap: 0,
+    }));
+    const sampled = sampleByTick(xs, 10, 1000);
+    expect(sampled.length).toBe(10);
+    const ticks = sampled.map((t) => t.tick);
+    // Strata are centered at 50, 150, ..., 950; with a dense 1-tick-resolution
+    // list the pointer lands within a bucket's width (100 ticks) of the target.
+    const expected = Array.from({ length: 10 }, (_, k) => Math.floor((k + 0.5) * 1000 / 10));
+    for (let i = 0; i < ticks.length; i++) {
+      expect(Math.abs(ticks[i]! - expected[i]!)).toBeLessThanOrEqual(100);
+    }
+    // strictly increasing (no duplicate/out-of-order picks on a dense list)
+    for (let i = 1; i < ticks.length; i++) expect(ticks[i]!).toBeGreaterThan(ticks[i - 1]!);
+  });
+
+  it("returns all triggers when cap is at or beyond the list length", () => {
+    const xs: TriggerPoint[] = Array.from({ length: 5 }, (_, i) => ({
+      id: `t:${i}`, seedRoot: "t", tick: i, npcId: "n",
+      observation: {} as TriggerPoint["observation"], candidates: [], bestIndex: 0, gap: 0,
+    }));
+    expect(sampleByTick(xs, 5, 5)).toEqual(xs);
+    expect(sampleByTick(xs, 10, 5)).toEqual(xs);
+  });
+
+  it("is deterministic", () => {
+    const xs: TriggerPoint[] = Array.from({ length: 300 }, (_, i) => ({
+      id: `t:${i}`, seedRoot: "t", tick: i, npcId: "n",
+      observation: {} as TriggerPoint["observation"], candidates: [], bestIndex: 0, gap: 0,
+    }));
+    const a = sampleByTick(xs, 20, 300);
+    const b = sampleByTick(xs, 20, 300);
+    expect(a).toEqual(b);
+  });
+
+  it("backfills from remaining triggers when the tail runs dry", () => {
+    // Dense head (ticks 1-10), then nothing until a sparse tail -- forces the
+    // forward pointer to hit the end of the list before all strata are filled,
+    // exercising the backfill path.
+    const xs: TriggerPoint[] = [
+      ...Array.from({ length: 10 }, (_, i) => ({
+        id: `head:${i}`, seedRoot: "t", tick: i + 1, npcId: "n",
+        observation: {} as TriggerPoint["observation"], candidates: [], bestIndex: 0, gap: 0,
+      })),
+      { id: "tail:1", seedRoot: "t", tick: 950, npcId: "n", observation: {} as TriggerPoint["observation"], candidates: [], bestIndex: 0, gap: 0 },
+    ];
+    const sampled = sampleByTick(xs, 5, 1000);
+    expect(sampled.length).toBe(5);
+    // every element of the result must come from the input, with no repeats
+    expect(new Set(sampled).size).toBe(5);
+    for (const t of sampled) expect(xs).toContain(t);
   });
 });

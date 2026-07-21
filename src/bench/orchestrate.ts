@@ -63,12 +63,53 @@ export function sampleEvenly<T>(xs: T[], cap: number): T[] {
   return out;
 }
 
+/**
+ * Pick up to `cap` triggers spread uniformly across TICK space (not index space).
+ * `triggers` must already be tick-ascending (as `findTriggers` produces them).
+ *
+ * For each stratum k in [0, cap), the target tick is floor((k + 0.5) * ticks / cap);
+ * a single forward pointer advances to the first not-yet-taken trigger at or beyond
+ * that target tick. If the pointer reaches the end of the list before all strata are
+ * filled (the tail runs dry — e.g. trigger density thins out over the run), the
+ * remaining slots are backfilled from whatever untaken triggers are left, in order,
+ * until `cap` is reached or the list is exhausted.
+ *
+ * This is deterministic and pure (no RNG): unlike index-uniform `sampleEvenly`, it
+ * doesn't under-represent the tail when trigger density is non-uniform over time.
+ */
+export function sampleByTick(triggers: TriggerPoint[], cap: number, ticks: number): TriggerPoint[] {
+  if (triggers.length <= cap) return triggers;
+  const out: TriggerPoint[] = [];
+  let pointer = 0;
+  for (let k = 0; k < cap; k++) {
+    const targetTick = Math.floor((k + 0.5) * ticks / cap);
+    while (pointer < triggers.length && triggers[pointer]!.tick < targetTick) pointer++;
+    if (pointer >= triggers.length) break;
+    out.push(triggers[pointer]!);
+    pointer++;
+  }
+  if (out.length < cap) {
+    const taken = new Set(out);
+    for (let i = 0; i < triggers.length && out.length < cap; i++) {
+      const t = triggers[i]!;
+      if (!taken.has(t)) out.push(t);
+    }
+  }
+  return out;
+}
+
 export function harvestAll(
   manifest: WorldManifest, roster: RosterEntry[], params: BenchParams,
 ): TriggerPoint[] {
   const all: TriggerPoint[] = [];
+  // NOTE: official-v1 (docs/bench-results/official-v1/, commit 54b0897-era) used
+  // index-uniform sampling (sampleEvenly). This function now uses tick-stratified
+  // sampling (sampleByTick) to fix tail under-coverage caused by reproduction
+  // (Task 9) shifting trigger density later in the run. Any future official
+  // benchmark run requires a new prereg (v2) regardless of this change, since the
+  // sampling protocol itself is part of what prereg pins down.
   for (const seed of params.seeds) {
-    all.push(...sampleEvenly(findTriggers(manifest, roster, seed, params.ticks, params.epsilon), params.capPerSeed));
+    all.push(...sampleByTick(findTriggers(manifest, roster, seed, params.ticks, params.epsilon), params.capPerSeed, params.ticks));
   }
   return all;
 }

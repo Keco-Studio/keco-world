@@ -24,7 +24,7 @@ describe("genome-bearing state", () => {
     const ages = s.npcs.map((n) => npcAge(n, 0));
     for (const a of ages) {
       expect(a).toBeGreaterThanOrEqual(manifest.adultAgeTicks);
-      expect(a).toBeLessThan(manifest.adultAgeTicks + manifest.elderAgeTicks);
+      expect(a).toBeLessThan(manifest.elderAgeTicks);
     }
     expect(new Set(ages).size).toBeGreaterThan(3);
     expect(createInitialState(manifest, makeTestRoster(10), "seed-1")).toEqual(s);

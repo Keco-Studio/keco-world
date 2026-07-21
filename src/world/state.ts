@@ -65,7 +65,7 @@ export function createInitialState(
       manifest.adultAgeTicks +
       drawInt(
         seedRoot,
-        Math.max(1, manifest.elderAgeTicks),
+        Math.max(1, manifest.elderAgeTicks - manifest.adultAgeTicks),
         "founder-age",
         r.npcId,
       )

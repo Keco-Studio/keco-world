@@ -12,6 +12,7 @@ replay verification with tick-level divergence localization.
 - `npm run replay -- runs/<s>-<n>` — verify the run replays identically
 - `npm run bench -- --harvest-only` — calibrate deliberation trigger harvesting
 - `npm run bench -- --label official-v1` — run the deliberation benchmark (requires `ollama pull qwen3:0.6b qwen3:1.7b qwen3:4b`; see `docs/bench-prereg-v1.md`)
+- `npm run evolve -- --seed <s> --ticks <n>` — run the generational driver (genome breeding, in-world reproduction, aging), write `runs/evolve-<s>/`; see `docs/evolve-calibration.md`
 
 ## Determinism invariants
 
@@ -28,5 +29,6 @@ Single-version policy: `docs/living-worlds.md` is the one authoritative spec; hi
 - `docs/review-v0.4.1.md` — critique of the v0.4.1 draft (historical record)
 - `docs/proposals-v0.5.md` — adopted proposals P1–P5 (historical record)
 - `docs/bench-prereg-v1.md` — preregistered deliberation-gain judgment (frozen protocol)
+- `docs/evolve-calibration.md` — genome-breeding calibration runs (population/births/deaths, observations, known unknowns for §17.1 step 7)
 - `docs/decisions/` — decision records (DEC-P0 → B0)
 - `docs/bench-results/` — official benchmark reports + audit trails

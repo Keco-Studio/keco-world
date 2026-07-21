@@ -1,12 +1,7 @@
 import type { WorldManifest, RosterEntry } from "../schema/core.js";
 import { SCHEMA_VERSION } from "../schema/core.js";
 import { drawInt } from "../rng/rng.js";
-
-const NAMES = [
-  "Rill", "Ash", "Fenna", "Bram", "Sorrel", "Wren", "Tarn", "Isla", "Corin", "Vesna",
-  "Odo", "Merle", "Sable", "Quinn", "Petra", "Lorn", "Hazel", "Garen", "Nyx", "Ives",
-  "Runa", "Col", "Tamsin", "Ebba", "Joss",
-] as const;
+import { NAME_POOL } from "../world/rules.js";
 
 export function makeDemoManifest(): WorldManifest {
   const bushes = Array.from({ length: 12 }, (_, i) => ({
@@ -54,7 +49,7 @@ function vary(seedRoot: string, base: number, spread: number, ...key: (string | 
 }
 
 export function makeDemoRoster(seedRoot: string): RosterEntry[] {
-  return NAMES.map((name, i) => {
+  return NAME_POOL.map((name, i) => {
     const npcId = `npc-${i + 1}`;
     return {
       npcId,

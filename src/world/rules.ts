@@ -1,9 +1,17 @@
-import type { WorldManifest } from "../schema/core.js";
+import type { WorldManifest, Identity, Policy, Belief } from "../schema/core.js";
 import type { SemanticEvent } from "../schema/log.js";
-import type { WorldState } from "./state.js";
+import type { WorldState, NpcState } from "./state.js";
 import { seasonAt, chebyshev, isOnShelter, npcAge } from "./state.js";
 import { drawInt } from "../rng/rng.js";
+import { hashCanonical } from "../canon/canonicalize.js";
+import { breed } from "../life/genome.js";
 import { DIRS } from "../mind/utility.js";
+
+export const NAME_POOL = [
+  "Rill", "Ash", "Fenna", "Bram", "Sorrel", "Wren", "Tarn", "Isla", "Corin", "Vesna",
+  "Odo", "Merle", "Sable", "Quinn", "Petra", "Lorn", "Hazel", "Garen", "Nyx", "Ives",
+  "Runa", "Col", "Tamsin", "Ebba", "Joss",
+] as const;
 
 /** Bush regrowth, wolf walk + attacks. Runs before NPC decisions each tick. */
 export function environmentStep(
@@ -74,4 +82,108 @@ export function needsStep(
       events.push({ tick: state.tick, kind: "death", npcId: npc.npcId, data: { cause: npc.deathCause } });
     }
   }
+}
+
+/** Reproduction step: pairing, births, population cap. */
+export function reproductionStep(
+  state: WorldState,
+  manifest: WorldManifest,
+  seedRoot: string,
+  events: SemanticEvent[],
+): void {
+  const age = (npc: NpcState) => npcAge(npc, state.tick);
+  const isEligible = (npc: NpcState): boolean =>
+    npc.alive &&
+    age(npc) >= manifest.adultAgeTicks &&
+    age(npc) <= manifest.elderAgeTicks &&
+    npc.energy >= manifest.reproEnergyMin &&
+    state.tick >= npc.reproCooldownUntil;
+
+  const paired = new Set<string>(); // track paired npcIds this tick
+  let birthIdx = 0;
+
+  for (let i = 0; i < state.npcs.length; i++) {
+    const a = state.npcs[i]!;
+    if (!isEligible(a) || paired.has(a.npcId)) continue;
+
+    // Find first later eligible unpaired partner within Chebyshev distance 1
+    let b: NpcState | null = null;
+    for (let j = i + 1; j < state.npcs.length; j++) {
+      const candidate = state.npcs[j]!;
+      if (isEligible(candidate) && !paired.has(candidate.npcId) && chebyshev(a.pos, candidate.pos) <= 1) {
+        b = candidate;
+        break;
+      }
+    }
+
+    if (!b) continue;
+
+    // Check population cap before birth
+    if (state.npcs.filter((n) => n.alive).length >= manifest.maxPopulation) break;
+
+    // Roll for birth
+    const chance = drawInt(seedRoot, 1_000_000, "repro", a.npcId, b.npcId, state.tick);
+    if (chance >= manifest.birthChancePpm) continue;
+
+    // Birth happens: both parents pay energy cost and set cooldown
+    a.energy -= manifest.reproEnergyCost;
+    b.energy -= manifest.reproEnergyCost;
+    a.reproCooldownUntil = state.tick + manifest.reproCooldownTicks;
+    b.reproCooldownUntil = state.tick + manifest.reproCooldownTicks;
+
+    // Create child
+    const childId = `child-${state.tick}-${birthIdx}`;
+    birthIdx++;
+
+    const childGenome = breed(genomeOf(a), genomeOf(b), childId, seedRoot, state.tick);
+
+    const child: NpcState = {
+      npcId: childId,
+      name: NAME_POOL[drawInt(seedRoot, NAME_POOL.length, "childname", childId)]!,
+      pos: { x: a.pos.x, y: a.pos.y },
+      hp: manifest.childStartHp,
+      energy: manifest.childStartEnergy,
+      berries: 0,
+      alive: true,
+      deathTick: null,
+      deathCause: null,
+      lastDamage: null,
+      identity: childGenome.identity,
+      policy: childGenome.policy,
+      beliefs: childGenome.beliefs,
+      birthTick: state.tick,
+      generation: childGenome.generation,
+      lineageId: childGenome.lineageId,
+      parents: [a.npcId, b.npcId],
+      reproCooldownUntil: state.tick + manifest.reproCooldownTicks,
+      genomeHash: hashCanonical({ identity: childGenome.identity, policy: childGenome.policy, beliefs: childGenome.beliefs }),
+    };
+
+    state.npcs.push(child);
+    paired.add(a.npcId);
+    paired.add(b.npcId);
+
+    events.push({
+      tick: state.tick,
+      kind: "birth",
+      npcId: child.npcId,
+      data: {
+        generation: child.generation,
+        lineageId: child.lineageId,
+        parentA: a.npcId,
+        parentB: b.npcId,
+      },
+    });
+  }
+}
+
+/** Extract genome from an NPC state. */
+function genomeOf(npc: NpcState) {
+  return {
+    lineageId: npc.lineageId,
+    generation: npc.generation,
+    identity: npc.identity,
+    policy: npc.policy,
+    beliefs: npc.beliefs,
+  };
 }

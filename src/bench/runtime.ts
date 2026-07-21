@@ -8,6 +8,7 @@ export interface DeliberationOutcome {
   latencyMs: number;
   tokensIn: number;
   tokensOut: number;
+  /** Error tag: "timeout" (abort), "network" (connection/DNS), "http:<code>" (status), "parse" (JSON), "range" (choice bounds), or null on success. */
   error: string | null;
 }
 
@@ -53,8 +54,9 @@ export class OllamaRuntime implements DeliberationRuntime {
           options: { temperature: 0, num_predict: 256 },
         }),
       });
-    } catch {
-      return fail("timeout");
+    } catch (err) {
+      const isTimeout = err instanceof DOMException && err.name === "TimeoutError";
+      return fail(isTimeout ? "timeout" : "network");
     }
     if (!res.ok) return fail(`http:${res.status}`);
     let body: { message?: { content?: string }; prompt_eval_count?: number; eval_count?: number };

@@ -54,6 +54,22 @@ describe("OllamaRuntime", () => {
     expect(b["model"]).toBe("qwen3:4b");
     expect(b["stream"]).toBe(false);
   });
+  it("tags AbortSignal timeout as 'timeout'", async () => {
+    const rejectFetch: typeof fetch = (async () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    }) as unknown as typeof fetch;
+    const rt = new OllamaRuntime("m", "http://x", rejectFetch);
+    const r = await rt.decide(prompt, 5000);
+    expect(r.error).toBe("timeout");
+  });
+  it("tags connection failures as 'network'", async () => {
+    const rejectFetch: typeof fetch = (async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+    const rt = new OllamaRuntime("m", "http://x", rejectFetch);
+    const r = await rt.decide(prompt, 5000);
+    expect(r.error).toBe("network");
+  });
 });
 
 describe("MockRuntime", () => {

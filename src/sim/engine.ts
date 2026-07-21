@@ -8,6 +8,7 @@ import type { Observation } from "../mind/observe.js";
 import { buildObservation } from "../mind/observe.js";
 import { reflexDecide } from "../mind/reflex.js";
 import { scoreCandidates, pickBest, type ScoredCandidate } from "../mind/utility.js";
+import { applyBeliefs } from "../mind/beliefs.js";
 import { hashCanonical } from "../canon/canonicalize.js";
 
 export interface DecideInfo {
@@ -72,12 +73,13 @@ export function runSim(
       if (injected !== undefined) {
         ({ action, actionSource } = injected);
       } else {
-        const reflex = reflexDecide(obs, npc.policy);
+        const effPolicy = applyBeliefs(npc.policy, npc.beliefs, seasonAt(t, manifest));
+        const reflex = reflexDecide(obs, effPolicy);
         if (reflex !== null) {
           action = reflex;
           actionSource = "reflex";
         } else {
-          cands = scoreCandidates(obs, npc.identity, npc.policy, manifest, seedRoot);
+          cands = scoreCandidates(obs, npc.identity, effPolicy, manifest, seedRoot);
           const best = pickBest(cands);
           action = best.action;
           actionSource = "utility";

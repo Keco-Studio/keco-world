@@ -8,6 +8,8 @@ export const DIRS: readonly Vec2[] = [
   { x: 0, y: 1 }, { x: -1, y: 1 }, { x: -1, y: 0 }, { x: -1, y: -1 },
 ] as const;
 
+export interface ScoredCandidate { key: UtilityKey; score: number; action: Action }
+
 export function moveToward(from: Vec2, to: Vec2): Action {
   const dx = Math.sign(to.x - from.x);
   const dy = Math.sign(to.y - from.y);
@@ -15,19 +17,17 @@ export function moveToward(from: Vec2, to: Vec2): Action {
   return { verb: "move", to: { x: from.x + dx, y: from.y + dy } };
 }
 
-interface Candidate { key: UtilityKey; score: number; action: Action }
-
-/** Deterministic integer scoring per plan spec; ties resolved by candidate order. */
-export function utilityDecide(
+/** All applicable candidates in fixed generation order (consume→forage→shelter→explore→idle). */
+export function scoreCandidates(
   obs: Observation,
   identity: Identity,
   policy: Policy,
   manifest: WorldManifest,
   seedRoot: string,
-): { action: Action; key: UtilityKey } {
+): ScoredCandidate[] {
   const w = policy.utilityWeights;
   const hungerNeed = Math.floor(((manifest.maxEnergy - obs.self.energy) * 1000) / manifest.maxEnergy);
-  const candidates: Candidate[] = [];
+  const candidates: ScoredCandidate[] = [];
 
   if (obs.self.berries > 0) {
     candidates.push({ key: "consume", score: Math.floor((w.consume * hungerNeed) / 1000), action: { verb: "consume" } });
@@ -61,9 +61,24 @@ export function utilityDecide(
 
   candidates.push({ key: "idle", score: w.idle, action: { verb: "idle" } });
 
+  return candidates;
+}
+
+/** Strict > comparison; earliest candidate wins ties. */
+export function pickBest(candidates: ScoredCandidate[]): ScoredCandidate {
   let best = candidates[0]!;
-  for (const c of candidates) {
-    if (c.score > best.score) best = c; // strict > keeps earliest on ties
-  }
+  for (const c of candidates) if (c.score > best.score) best = c;
+  return best;
+}
+
+/** Deterministic integer scoring per plan spec; ties resolved by candidate order. */
+export function utilityDecide(
+  obs: Observation,
+  identity: Identity,
+  policy: Policy,
+  manifest: WorldManifest,
+  seedRoot: string,
+): { action: Action; key: UtilityKey } {
+  const best = pickBest(scoreCandidates(obs, identity, policy, manifest, seedRoot));
   return { action: best.action, key: best.key };
 }

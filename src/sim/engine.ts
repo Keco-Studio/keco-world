@@ -4,15 +4,28 @@ import type { WorldState } from "../world/state.js";
 import { createInitialState, seasonAt } from "../world/state.js";
 import { environmentStep, needsStep } from "../world/rules.js";
 import { applyAction } from "../world/actions.js";
+import type { Observation } from "../mind/observe.js";
 import { buildObservation } from "../mind/observe.js";
 import { reflexDecide } from "../mind/reflex.js";
-import { utilityDecide } from "../mind/utility.js";
+import { scoreCandidates, pickBest, type ScoredCandidate } from "../mind/utility.js";
 import { hashCanonical } from "../canon/canonicalize.js";
+
+export interface DecideInfo {
+  tick: number;
+  npcId: string;
+  observation: Observation;
+  actionSource: "reflex" | "utility";
+  action: Action;
+  /** Scored utility candidates — null for reflex and injected decisions. */
+  candidates: ScoredCandidate[] | null;
+}
 
 export interface RunOptions {
   ticks: number;
   injectedActions?: Map<string, { action: Action; actionSource: "reflex" | "utility" }>;
   collectTickHashes?: boolean;
+  /** Read-only observer of every NPC decision (after decide, before apply). MUST NOT mutate. */
+  onDecide?: (info: DecideInfo) => void;
 }
 
 export interface RunResult {
@@ -57,6 +70,7 @@ export function runSim(
 
       let action: Action;
       let actionSource: "reflex" | "utility";
+      let cands: ScoredCandidate[] | null = null;
       const injected = opts.injectedActions?.get(`${t}:${npc.npcId}`);
       if (injected !== undefined) {
         ({ action, actionSource } = injected);
@@ -66,10 +80,21 @@ export function runSim(
           action = reflex;
           actionSource = "reflex";
         } else {
-          action = utilityDecide(obs, entry.identity, entry.policy, manifest, seedRoot).action;
+          cands = scoreCandidates(obs, entry.identity, entry.policy, manifest, seedRoot);
+          const best = pickBest(cands);
+          action = best.action;
           actionSource = "utility";
         }
       }
+
+      opts.onDecide?.({
+        tick: t,
+        npcId: npc.npcId,
+        observation: obs,
+        actionSource,
+        action,
+        candidates: cands,
+      });
 
       const legal = applyAction(state, manifest, npc, action);
       if (!legal) {

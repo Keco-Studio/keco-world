@@ -1,0 +1,104 @@
+{
+  "params": {
+    "seeds": [
+      "bench-1",
+      "bench-2",
+      "bench-3",
+      "bench-4",
+      "bench-5",
+      "bench-6",
+      "bench-7",
+      "bench-8"
+    ],
+    "ticks": 800,
+    "epsilon": 60,
+    "horizonTicks": 100,
+    "timeoutMs": 30000,
+    "capPerSeed": 200
+  },
+  "promptVersion": "bench-v1",
+  "startedAt": "2026-07-21T16:07:11.082Z",
+  "triggerCount": 1600,
+  "summaries": [
+    {
+      "model": "qwen3:0.6b",
+      "trials": 1600,
+      "failures": 0,
+      "agreements": 371,
+      "divergent": 1229,
+      "wins": 327,
+      "losses": 412,
+      "ties": 490,
+      "winRate": {
+        "p": 0.44248985115020295,
+        "lo": 0.40706811869540255,
+        "hi": 0.4785064102485877
+      },
+      "latencyP50": 544,
+      "latencyP95": 681,
+      "tokensInMean": 247.774375,
+      "tokensOutMean": 51.18125,
+      "verdict": "no-gain"
+    },
+    {
+      "model": "qwen3:1.7b",
+      "trials": 1600,
+      "failures": 0,
+      "agreements": 354,
+      "divergent": 1246,
+      "wins": 331,
+      "losses": 415,
+      "ties": 500,
+      "winRate": {
+        "p": 0.4436997319034853,
+        "lo": 0.4084262823219867,
+        "hi": 0.47955005828114877
+      },
+      "latencyP50": 703,
+      "latencyP95": 859,
+      "tokensInMean": 247.774375,
+      "tokensOutMean": 34.235625,
+      "verdict": "no-gain"
+    },
+    {
+      "model": "qwen3:4b",
+      "trials": 1600,
+      "failures": 0,
+      "agreements": 326,
+      "divergent": 1274,
+      "wins": 339,
+      "losses": 456,
+      "ties": 479,
+      "winRate": {
+        "p": 0.42641509433962266,
+        "lo": 0.3924713407181467,
+        "hi": 0.46106658219423047
+      },
+      "latencyP50": 1497,
+      "latencyP95": 1856,
+      "tokensInMean": 241.774375,
+      "tokensOutMean": 41.933125,
+      "verdict": "no-gain"
+    },
+    {
+      "model": "random-control",
+      "trials": 1600,
+      "failures": 0,
+      "agreements": 91,
+      "divergent": 1509,
+      "wins": 447,
+      "losses": 382,
+      "ties": 680,
+      "winRate": {
+        "p": 0.5392038600723763,
+        "lo": 0.5051688719891738,
+        "hi": 0.5728771814260254
+      },
+      "latencyP50": 0,
+      "latencyP95": 0,
+      "tokensInMean": 0,
+      "tokensOutMean": 0,
+      "verdict": "no-gain"
+    }
+  ]
+}

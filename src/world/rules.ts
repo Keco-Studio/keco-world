@@ -1,7 +1,7 @@
 import type { WorldManifest } from "../schema/core.js";
 import type { SemanticEvent } from "../schema/log.js";
 import type { WorldState } from "./state.js";
-import { seasonAt, chebyshev, isOnShelter } from "./state.js";
+import { seasonAt, chebyshev, isOnShelter, npcAge } from "./state.js";
 import { drawInt } from "../rng/rng.js";
 import { DIRS } from "../mind/utility.js";
 
@@ -45,15 +45,23 @@ export function needsStep(
   const season = seasonAt(state.tick, manifest);
   for (const npc of state.npcs) {
     if (!npc.alive) continue;
+    const wasStarving = npc.energy === 0;
     npc.energy = Math.max(0, npc.energy - manifest.energyDrainPerTick);
-    if (npc.energy === 0) {
+    const isStarving = npc.energy === 0;
+    if (isStarving) {
       npc.hp -= manifest.starvationHpDrain;
       npc.lastDamage = "starvation";
-      events.push({ tick: state.tick, kind: "starving", npcId: npc.npcId, data: {} });
+      if (!wasStarving) {
+        events.push({ tick: state.tick, kind: "starving", npcId: npc.npcId, data: {} });
+      }
     }
     if (season === "winter" && !isOnShelter(npc.pos, manifest)) {
       npc.hp -= manifest.winterColdHpDrain;
       npc.lastDamage = "cold";
+    }
+    if (npcAge(npc, state.tick) > manifest.elderAgeTicks) {
+      npc.hp -= manifest.senescenceHpDrain;
+      npc.lastDamage = "old_age";
     }
     if (npc.energy >= manifest.hpRegenEnergyMin) {
       npc.hp = Math.min(manifest.maxHp, npc.hp + manifest.hpRegenPerTick);

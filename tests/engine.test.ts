@@ -27,7 +27,7 @@ describe("engine", () => {
     expect(r.actionLog[0]!.previousEventHash).toBeNull();
     expect(verifyLogChain(r.actionLog)).toBe(true);
     const tampered = r.actionLog.map((e) => ({ ...e }));
-    tampered[10]!.action = { verb: "idle" };
+    tampered[10]!.observationHash = "tampered-hash";
     expect(verifyLogChain(tampered)).toBe(false);
   });
   it("checkpoints at fixed interval", () => {

@@ -53,7 +53,7 @@ describe("engine onDecide hook", () => {
       expect(seen[i]!.tick).toBe(r.actionLog[i]!.tick);
       expect(seen[i]!.npcId).toBe(r.actionLog[i]!.npcId);
       expect(seen[i]!.action).toEqual(r.actionLog[i]!.action);
-      if (seen[i]!.actionSource === "utility") {
+      if (seen[i]!.actionSource === "utility" || seen[i]!.actionSource === "resolver") {
         expect(Array.isArray(seen[i]!.candidates)).toBe(true);
         expect(seen[i]!.candidates!.length).toBeGreaterThan(0);
       } else {

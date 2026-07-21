@@ -7,7 +7,8 @@ import { applyAction } from "../world/actions.js";
 import type { Observation } from "../mind/observe.js";
 import { buildObservation } from "../mind/observe.js";
 import { reflexDecide } from "../mind/reflex.js";
-import { scoreCandidates, pickBest, type ScoredCandidate } from "../mind/utility.js";
+import { scoreCandidates, type ScoredCandidate } from "../mind/utility.js";
+import { resolve } from "../mind/resolver.js";
 import { applyBeliefs } from "../mind/beliefs.js";
 import { hashCanonical } from "../canon/canonicalize.js";
 
@@ -80,9 +81,9 @@ export function runSim(
           actionSource = "reflex";
         } else {
           cands = scoreCandidates(obs, npc.identity, effPolicy, manifest, seedRoot);
-          const best = pickBest(cands);
-          action = best.action;
-          actionSource = "utility";
+          const resolution = resolve(cands, npc.identity, effPolicy.deliberationEpsilon, seedRoot, npc.npcId, t);
+          action = resolution.action;
+          actionSource = resolution.source;
         }
       }
 

@@ -482,7 +482,7 @@ export function makeArmSetup(arm: ArmId, seedRoot: string): ArmSetup {
   let roster: RosterEntry[];
 
   if (arm === "handcrafted") {
-    roster = JSON.parse(JSON.stringify(HANDCRAFTED_ARCHETYPES)) as RosterEntry[];
+    roster = structuredClone(HANDCRAFTED_ARCHETYPES);
   } else if (arm === "evolutionary") {
     roster = makeDemoRoster(seedRoot);
   } else {

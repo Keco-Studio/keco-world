@@ -222,3 +222,45 @@ export function meanPairwiseVerbL1(
 
   return pairsToUse.length > 0 ? totalL1 / pairsToUse.length : 0;
 }
+
+/**
+ * Mean verbL1 distance over cross pairs (a_i, b_j) between two genome sets.
+ * If |a|×|b| exceeds maxPairs, takes the first maxPairs pairs in deterministic
+ * row-major order (i.e. i=0 paired with every j, then i=1, ...).
+ *
+ * Performance: evaluates each genome in each set exactly once, then computes
+ * cross-pair distances from pre-computed verb histograms (no per-pair re-evaluation).
+ */
+export function meanCrossVerbL1(
+  a: GenomeUnderTest[],
+  b: GenomeUnderTest[],
+  scenarios: Scenario[],
+  maxPairs: number = 100,
+): number {
+  if (a.length === 0 || b.length === 0) {
+    return 0;
+  }
+
+  // Evaluate each genome exactly once
+  const histsA = a.map((g) => verbHistogram(evaluateGenome(g, scenarios)));
+  const histsB = b.map((g) => verbHistogram(evaluateGenome(g, scenarios)));
+
+  // Generate all cross pairs (i, j) in deterministic row-major order
+  const pairs: Array<[number, number]> = [];
+  for (let i = 0; i < a.length; i++) {
+    for (let j = 0; j < b.length; j++) {
+      pairs.push([i, j]);
+    }
+  }
+
+  // Limit to maxPairs if needed
+  const pairsToUse = pairs.slice(0, maxPairs);
+
+  // Compute mean verbL1 over selected pairs
+  let totalL1 = 0;
+  for (const [i, j] of pairsToUse) {
+    totalL1 += histogramL1(histsA[i]!, histsB[j]!);
+  }
+
+  return pairsToUse.length > 0 ? totalL1 / pairsToUse.length : 0;
+}

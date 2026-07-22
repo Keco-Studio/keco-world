@@ -17,7 +17,7 @@ export function moveToward(from: Vec2, to: Vec2): Action {
   return { verb: "move", to: { x: from.x + dx, y: from.y + dy } };
 }
 
-/** All applicable candidates in fixed generation order (consume→forage→shelter→explore→idle). */
+/** All applicable candidates in fixed generation order (consume→forage→shelter→seekMate→explore→idle). */
 export function scoreCandidates(
   obs: Observation,
   identity: Identity,

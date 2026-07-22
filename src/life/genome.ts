@@ -33,6 +33,21 @@ function jitter(seedRoot: string, jitterAmount: number, ...parts: (string | numb
   return r - jitterAmount;
 }
 
+/** Non-evolutionary inheritance: child = parent A's archetype, unmutated.
+ * Identity/policy copied verbatim (they never mutate in-life, so this is the
+ * archetype's designed genome). Only designed beliefs pass down. */
+export function cloneGenome(parentA: NpcGenome, parentB: NpcGenome, tick: number): NpcGenome {
+  return {
+    lineageId: parentA.lineageId,
+    generation: Math.max(parentA.generation, parentB.generation) + 1,
+    identity: structuredClone(parentA.identity),
+    policy: structuredClone(parentA.policy),
+    beliefs: parentA.beliefs
+      .filter((b) => b.source === "designed")
+      .map((b) => ({ ...structuredClone(b), acquiredTick: tick })),
+  };
+}
+
 export function breed(parentA: NpcGenome, parentB: NpcGenome, childKey: string, seedRoot: string, tick: number): NpcGenome {
   // Lineage and generation
   const lineageId = parentA.lineageId;

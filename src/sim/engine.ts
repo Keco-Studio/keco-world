@@ -11,6 +11,7 @@ import { scoreCandidates, type ScoredCandidate } from "../mind/utility.js";
 import { resolve } from "../mind/resolver.js";
 import { applyBeliefs, decayBeliefs, beliefFormationStep } from "../mind/beliefs.js";
 import { hashCanonical } from "../canon/canonicalize.js";
+import { drawInt } from "../rng/rng.js";
 
 export interface DecideInfo {
   tick: number;
@@ -89,17 +90,26 @@ export function runFromState(
         chosenKey = null;
       } else {
         const effPolicy = applyBeliefs(npc.policy, npc.beliefs, seasonAt(t, manifest));
-        const reflex = reflexDecide(obs, effPolicy);
-        if (reflex !== null) {
-          action = reflex;
-          actionSource = "reflex";
-          chosenKey = null;
-        } else {
+        if (manifest.cognition.decisionMode === "random") {
+          // Sanity-floor arm: no reflex, no utility — uniform over the candidate list.
           cands = scoreCandidates(obs, npc.identity, effPolicy, manifest, seedRoot);
-          const resolution = resolve(cands, npc.identity, effPolicy.deliberationEpsilon, seedRoot, npc.npcId, t);
-          action = resolution.action;
-          actionSource = resolution.source;
-          chosenKey = resolution.key;
+          const idx = drawInt(seedRoot, cands.length, "randarm", npc.npcId, t);
+          action = cands[idx]!.action;
+          actionSource = "random";
+          chosenKey = cands[idx]!.key;
+        } else {
+          const reflex = reflexDecide(obs, effPolicy);
+          if (reflex !== null) {
+            action = reflex;
+            actionSource = "reflex";
+            chosenKey = null;
+          } else {
+            cands = scoreCandidates(obs, npc.identity, effPolicy, manifest, seedRoot);
+            const resolution = resolve(cands, npc.identity, effPolicy.deliberationEpsilon, seedRoot, npc.npcId, t);
+            action = resolution.action;
+            actionSource = resolution.source;
+            chosenKey = resolution.key;
+          }
         }
       }
 
@@ -149,15 +159,14 @@ export function runFromState(
 
     needsStep(state, manifest, events);
 
-    // Decay beliefs for each alive NPC
-    for (const npc of state.npcs) {
-      if (!npc.alive) continue;
-      decayBeliefs(npc, t);
+    if (manifest.cognition.beliefDynamics === "on") {
+      for (const npc of state.npcs) {
+        if (!npc.alive) continue;
+        decayBeliefs(npc, t);
+      }
+      const eventsThisTick = events.slice(evStart);
+      beliefFormationStep(state, events, eventsThisTick);
     }
-
-    // Belief formation from this tick's events (slice to avoid beliefFormationStep's own emissions)
-    const eventsThisTick = events.slice(evStart);
-    beliefFormationStep(state, events, eventsThisTick);
 
     // Reproduction: births add new NPCs
     reproductionStep(state, manifest, seedRoot, events);

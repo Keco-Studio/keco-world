@@ -4,7 +4,7 @@ import type { WorldState, NpcState } from "./state.js";
 import { seasonAt, chebyshev, isOnShelter, npcAge } from "./state.js";
 import { drawInt } from "../rng/rng.js";
 import { hashCanonical } from "../canon/canonicalize.js";
-import { breed } from "../life/genome.js";
+import { breed, cloneGenome } from "../life/genome.js";
 import { DIRS } from "../mind/utility.js";
 
 /**
@@ -142,7 +142,10 @@ export function reproductionStep(
     const childId = `child-${state.tick}-${birthIdx}`;
     birthIdx++;
 
-    const childGenome = breed(genomeOf(a), genomeOf(b), childId, seedRoot, state.tick);
+    const childGenome =
+      manifest.cognition.inheritanceMode === "clone"
+        ? cloneGenome(genomeOf(a), genomeOf(b), state.tick)
+        : breed(genomeOf(a), genomeOf(b), childId, seedRoot, state.tick);
 
     const child: NpcState = {
       npcId: childId,

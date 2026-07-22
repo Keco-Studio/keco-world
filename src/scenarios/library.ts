@@ -327,7 +327,7 @@ export const SCENARIOS: Scenario[] = [
     bushes: [{ pos: { x: 10, y: 10 }, berries: 3 }],
   }),
 
-  // --- Hunger (H6-H7; H6 dropped — see file-header note) ---
+  // --- Hunger (H6-H7) ---
   scenario("H7", "hunger", "desperate empty world", 1, {
     tick: 10,
     focal: { pos: { x: 5, y: 5 }, energy: 50, berries: 0 },

@@ -16,7 +16,8 @@
     "evolve": "tsx src/cli/evolve.ts",
     "behavior": "tsx src/cli/behavior.ts",
     "biography": "tsx src/cli/biography.ts",
-    "degradation": "tsx src/cli/degradation.ts"
+    "degradation": "tsx src/cli/degradation.ts",
+    "arms": "tsx src/cli/arms.ts"
   },
   "keywords": [],
   "author": "",

@@ -32,7 +32,6 @@ export function runArm(arm: ArmId, seedRoot: string, ticks: number, chunk: numbe
   if (ticks < 1) throw new Error(`ticks must be >= 1, got ${ticks}`);
 
   const { manifest, roster } = makeArmSetup(arm, seedRoot);
-  const founderLineageIds = new Set(roster.map((r) => r.npcId));
   let state = createInitialState(manifest, roster, seedRoot);
 
   const verbCounts: Record<string, number> = {};
@@ -58,8 +57,7 @@ export function runArm(arm: ArmId, seedRoot: string, ticks: number, chunk: numbe
   const survived = alive > 0;
   const maxGeneration =
     state.npcs.length > 0 ? Math.max(...state.npcs.map((n) => n.generation)) : 0; // over alive AND dead
-  const aliveLineageIds = new Set(state.npcs.filter((n) => n.alive).map((n) => n.lineageId));
-  const livingLineages = Array.from(founderLineageIds).filter((id) => aliveLineageIds.has(id)).length;
+  const livingLineages = new Set(state.npcs.filter((n) => n.alive).map((n) => n.lineageId)).size;
 
   const verbShares1000: Record<string, number> = {};
   if (totalActions > 0) {

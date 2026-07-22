@@ -40,4 +40,22 @@ describe("behavior metrics", () => {
     expect(m).toBeGreaterThan(0);
     expect(meanPairwiseVerbL1([neutral, explorer, neutral], SCENARIOS)).toBe(m);
   });
+
+  it("meanPairwiseVerbL1: refactored function matches old formula via compareGenomes", () => {
+    // Create a 3-genome test set
+    const explorer = { ...neutral, policy: { ...neutral.policy, utilityWeights: { ...neutral.policy.utilityWeights, explore: 1000, forage: 100 } } };
+    const cautious = { ...neutral, policy: { ...neutral.policy, utilityWeights: { ...neutral.policy.utilityWeights, explore: 50, forage: 500 } } };
+    const genomes = [neutral, explorer, cautious];
+
+    // Compute via refactored function (should evaluate each genome once)
+    const refactored = meanPairwiseVerbL1(genomes, SCENARIOS, 10);
+
+    // Compute via old formula using compareGenomes
+    const pair01 = compareGenomes(genomes[0]!, genomes[1]!, SCENARIOS);
+    const pair02 = compareGenomes(genomes[0]!, genomes[2]!, SCENARIOS);
+    const pair12 = compareGenomes(genomes[1]!, genomes[2]!, SCENARIOS);
+    const manual = (pair01.verbL1 + pair02.verbL1 + pair12.verbL1) / 3;
+
+    expect(refactored).toBeCloseTo(manual, 5);
+  });
 });

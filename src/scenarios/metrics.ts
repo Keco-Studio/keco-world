@@ -183,6 +183,9 @@ export function compareGenomes(
  * Mean L1 distance over all pairs of genomes.
  * If number of pairs C(n,2) exceeds maxPairs, takes the first maxPairs pairs
  * in deterministic (i<j) order.
+ *
+ * Performance: evaluates each genome exactly once, then computes pairwise
+ * distances from pre-computed verb histograms.
  */
 export function meanPairwiseVerbL1(
   genomes: GenomeUnderTest[],
@@ -192,6 +195,12 @@ export function meanPairwiseVerbL1(
   if (genomes.length < 2) {
     return 0;
   }
+
+  // Evaluate each genome exactly once
+  const traces = genomes.map(g => evaluateGenome(g, scenarios));
+
+  // Compute verb histogram for each genome
+  const hists = traces.map(verbHistogram);
 
   // Generate all pairs (i < j)
   const pairs: Array<[number, number]> = [];
@@ -207,8 +216,8 @@ export function meanPairwiseVerbL1(
   // Compute mean verbL1 over selected pairs
   let totalL1 = 0;
   for (const [i, j] of pairsToUse) {
-    const comparison = compareGenomes(genomes[i]!, genomes[j]!, scenarios);
-    totalL1 += comparison.verbL1;
+    const l1 = histogramL1(hists[i]!, hists[j]!);
+    totalL1 += l1;
   }
 
   return pairsToUse.length > 0 ? totalL1 / pairsToUse.length : 0;

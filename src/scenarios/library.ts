@@ -131,7 +131,7 @@ export function buildScenario(
     if (p.hp !== undefined) npc.hp = p.hp;
     if (p.energy !== undefined) npc.energy = p.energy;
     if (p.berries !== undefined) npc.berries = p.berries;
-    npc.birthTick = p.birthTick ?? opts.tick - 1000;
+    npc.birthTick = p.birthTick ?? opts.tick - 250;
     npc.reproCooldownUntil = p.reproCooldownUntil ?? 0;
   };
 

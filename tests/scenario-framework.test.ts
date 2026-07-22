@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { SCENARIOS } from "../src/scenarios/library.js";
 import { evaluateGenome } from "../src/scenarios/framework.js";
 import { makeTestRoster } from "./helpers.js";
+import { npcAge } from "../src/world/state.js";
 
 const neutral = (() => { const r = makeTestRoster(1)[0]!; return { identity: r.identity, policy: r.policy, beliefs: [] }; })();
 
@@ -38,5 +39,13 @@ describe("scenario framework", () => {
   });
   it("first 10 scenario ids and categories are frozen", () => {
     expect(SCENARIOS.slice(0, 10).map((s) => s.id)).toEqual(["H1","H2","H3","H4","H5","W1","W2","W3","P1","P2"]);
+  });
+  it("focal NPC default placement age is adult, not elder", () => {
+    const h1 = SCENARIOS.find((s) => s.id === "H1")!;
+    const built = h1.build();
+    const focal = built.state.npcs.find((n) => n.npcId === built.focalNpcId)!;
+    const age = npcAge(focal, built.state.tick);
+    expect(age).toBeGreaterThanOrEqual(built.manifest.adultAgeTicks);
+    expect(age).toBeLessThanOrEqual(built.manifest.elderAgeTicks);
   });
 });

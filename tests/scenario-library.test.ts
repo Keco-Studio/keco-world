@@ -4,9 +4,9 @@ import { evaluateGenome } from "../src/scenarios/framework.js";
 import { makeTestRoster } from "./helpers.js";
 
 describe("scenario library", () => {
-  it("has 30 scenarios with unique frozen ids across 6 categories", () => {
-    expect(SCENARIOS.length).toBe(30);
-    expect(new Set(SCENARIOS.map((s) => s.id)).size).toBe(30);
+  it("has 31 scenarios with unique frozen ids across 6 categories", () => {
+    expect(SCENARIOS.length).toBe(31);
+    expect(new Set(SCENARIOS.map((s) => s.id)).size).toBe(31);
     const cats = new Set(SCENARIOS.map((s) => s.category));
     expect(cats).toEqual(new Set(["hunger", "winter", "predator", "courtship", "hesitation", "sequence"]));
     for (const cat of cats) expect(SCENARIOS.filter((s) => s.category === cat).length).toBeGreaterThanOrEqual(3);
@@ -16,7 +16,7 @@ describe("scenario library", () => {
     const g = { identity: r.identity, policy: r.policy, beliefs: [] };
     const a = evaluateGenome(g, SCENARIOS);
     expect(a).toEqual(evaluateGenome(g, SCENARIOS));
-    expect(a.length).toBe(30);
+    expect(a.length).toBe(31);
   });
   it("category signatures hold for the neutral genome", () => {
     const r = makeTestRoster(1)[0]!;
@@ -27,6 +27,7 @@ describe("scenario library", () => {
     expect(byId["C4"]!.keys[0]).not.toBe("seekMate");
     expect(byId["S1"]!.verbs).toContain("move");          // exploration happens
     expect(byId["H7"]!.verbs.length).toBe(1);
+    expect(byId["H6"]!.keys[0]).toBe("forage");           // nearest bush (distance 1 vs 2)
     const z = ["Z1", "Z2", "Z3", "Z4"].map((id) => byId[id]!.keys[0]);
     expect(z.every((k) => k !== null)).toBe(true);        // hesitation scenarios produce utility-layer picks
   });

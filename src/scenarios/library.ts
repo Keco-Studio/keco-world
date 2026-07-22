@@ -152,17 +152,14 @@ function scenario(
 }
 
 /**
- * Fixed 30-scenario library across six categories (hunger, winter, predator, courtship,
- * hesitation, sequence). Ids are frozen test-set identities — do not renumber or reorder
- * existing entries when extending the library.
+ * Scenario library with 31 scenarios across six categories (hunger, winter, predator,
+ * courtship, hesitation, sequence). The first 10 ids are frozen test-set identities —
+ * do not renumber or reorder the first 10 entries when extending the library.
  *
- * NOTE: task-3-brief.md's scenario table lists 21 new rows (P3-P5, C1-C5, Z1-Z4, S1-S5,
- * H6-H7, W4-W5) despite its own header claiming "20 new / 30 total". Task 2's 10 + all 21
- * would be 31, which fails the suite's `SCENARIOS.length === 30` assertion. H6 ("nearest
- * vs richest bush") was dropped to reconcile: hunger already has 6 scenarios without it
- * (H1-H5, H7), the ".find takes nearest" behavior it targets is independently covered by
- * tests/candidates.test.ts and tests/utility.test.ts, and it is not referenced by id in any
- * assertion. See task-3-report.md for the full rationale.
+ * NOTE: H6 was initially dropped to reconcile task-3-brief.md's 21-row table with the
+ * hard 30-scenario assertion, but was restored per design doc allowance (30–50 scenarios).
+ * H6 is appended at the end rather than inserted after H5 to preserve the frozen first-10
+ * test requirement (ids H1-H5, W1-W3, P1-P2 must remain at indices 0-9).
  */
 export const SCENARIOS: Scenario[] = [
   scenario("H1", "hunger", "fed near food", 1, {
@@ -347,5 +344,15 @@ export const SCENARIOS: Scenario[] = [
     tick: 430,
     focal: { pos: { x: 2, y: 2 }, energy: 550 },
     bushes: [{ pos: { x: 4, y: 4 }, berries: 3 }],
+  }),
+
+  // --- Hunger (H6, appended at end to preserve frozen first-10 ids) ---
+  scenario("H6", "hunger", "nearest vs richest bush", 1, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 400 },
+    bushes: [
+      { pos: { x: 6, y: 5 }, berries: 1 },
+      { pos: { x: 7, y: 5 }, berries: 5 },
+    ],
   }),
 ];

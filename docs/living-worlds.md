@@ -699,8 +699,8 @@ const PolicyComplianceAttestation = z.object({
 3. 加入 Fixed Utility 与 Handcrafted 基线；
 4. ~~对小模型做审议 benchmark~~ **已交付 → B0（DEC-5）**；附带产出：Resolver 设计落地、触发采集/影子 rollout/统计管线可复用于后续实验；
 5. 实现 Genome 与结构化繁殖（含文化 effect 耦合、Resolver 的 epsilon 作为可进化人格表达度）——**当前步骤**；
-6. 建立固定情境测试集与传记自动抽取器；
-7. 跑少量 10 代实验检查退化；
+6. ~~建立固定情境测试集与传记自动抽取器~~ **已交付**（31 情境六类、行为度量、传记 CLI；信念累积混淆与传记截断两项 1C 前置修正记录于 evolve-calibration.md）；
+7. ~~跑少量 10 代实验检查退化~~ **已交付 → no-degradation**（6/6 种子过 D1–D5，docs/degradation-check.md；idle 份额爬升至 ~50% 平台化，瞬时越线 3/6 种子——观看无聊威胁的首个量化证据，步骤 9 需加窗口化判据）；
 8. 做首个五分钟产品壳（含 Chronicle v0 模板路径）；
 9. 再扩大到正式 50 代与人评。
 不要先建设浏览器矿工、候选世界保密、LoRA、世界进化或软通货。实施计划：docs/superpowers/plans/（阶段 0 与 benchmark 两份已归档）。

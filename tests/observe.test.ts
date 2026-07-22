@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildObservation } from "../src/mind/observe.js";
 import { createInitialState } from "../src/world/state.js";
+import { isFertileEligible } from "../src/world/rules.js";
 import { makeTestManifest, makeTestRoster } from "./helpers.js";
 
 describe("observation", () => {
@@ -37,6 +38,6 @@ describe("observation", () => {
     expect(obs.tick).toBe(150);
     expect(obs.season).toBe("winter");
     expect(obs.onShelter).toBe(true);
-    expect(obs.self).toEqual({ npcId: npc.npcId, pos: { x: 2, y: 2 }, hp: npc.hp, energy: npc.energy, berries: 0, reproReady: obs.self.reproReady });
+    expect(obs.self).toEqual({ npcId: npc.npcId, pos: { x: 2, y: 2 }, hp: npc.hp, energy: npc.energy, berries: 0, reproReady: isFertileEligible(npc, manifest, s.tick) });
   });
 });

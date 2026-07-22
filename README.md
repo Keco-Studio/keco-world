@@ -15,6 +15,7 @@ replay verification with tick-level divergence localization.
 - `npm run evolve -- --seed <s> --ticks <n>` — run the generational driver (genome breeding, in-world reproduction, aging), write `runs/evolve-<s>/`; see `docs/evolve-calibration.md`
 - `npm run behavior -- --seed <s> --ticks <n>` — rerun the demo world and compare founder vs. evolved genome behavior on the fixed scenario suite (verb/n-gram distances, key shifts, disagreement rate), write `runs/behavior-<s>/report.json`
 - `npm run biography -- --seed <s> --ticks <n> [--lineage <founderNpcId>] [--top N]` — rerun the demo world and extract a grounded, blinded markdown biography per lineage (named lineage, or top-N by member count), write `runs/biography-<s>/<founderName>.md` + `index.json`
+- `npm run degradation -- --seeds 6 --ticks 15000 --chunk 1000` — chain the demo world in fixed-size chunks across multiple seeds, snapshot cheap time-series metrics (population, diversity, epsilon, beliefs, verb shares) at each chunk boundary, and evaluate the pre-declared D1–D5 degradation criteria (§17.1 step 7); write `runs/degradation/report.json`; see `docs/degradation-check.md`
 
 ## Determinism invariants
 
@@ -32,6 +33,7 @@ Single-version policy: `docs/living-worlds.md` is the one authoritative spec; hi
 - `docs/proposals-v0.5.md` — adopted proposals P1–P5 (historical record)
 - `docs/bench-prereg-v1.md` — preregistered deliberation-gain judgment (frozen protocol)
 - `docs/evolve-calibration.md` — genome-breeding calibration runs (population/births/deaths, observations, known unknowns for §17.1 step 7; includes a 行为漂移初测 behavior-drift paragraph)
+- `docs/degradation-check.md` — 10-generation degradation check official run record (§17.1 step 7): frozen D1–D5 criteria, per-seed time series, idle-share drift trend, findings and implications for the step 9 formal 50-generation runs
 - `docs/examples/` — real artifacts from an evo-1 run: a lineage biography and a founders-vs-evolved behavior report, for a concrete sense of the CLI output
 - `docs/decisions/` — decision records (DEC-P0 → B0)
 - `docs/bench-results/` — official benchmark reports + audit trails

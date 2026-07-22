@@ -1,4 +1,4 @@
-import type { WorldManifest, RosterEntry } from "../schema/core.js";
+import type { WorldManifest, RosterEntry, UtilityKey } from "../schema/core.js";
 import type { Action, CanonicalActionEvent, Checkpoint, SemanticEvent } from "../schema/log.js";
 import type { WorldState } from "../world/state.js";
 import { createInitialState, seasonAt } from "../world/state.js";
@@ -20,6 +20,7 @@ export interface DecideInfo {
   action: Action;
   /** Scored utility candidates — null for reflex and injected decisions. */
   candidates: ScoredCandidate[] | null;
+  chosenKey: UtilityKey | null;   // the winning candidate's key for utility/resolver decisions; null for reflex/injected
 }
 
 export interface RunOptions {
@@ -43,13 +44,14 @@ export interface RunResult {
   haltedAtTick: number | null;
 }
 
-export function runSim(
+/** Run the tick loop from a prepared state, ticks state.tick+1 .. state.tick+opts.ticks. Mutates a deep copy, never the input. */
+export function runFromState(
+  initial: WorldState,
   manifest: WorldManifest,
-  roster: RosterEntry[],
   seedRoot: string,
   opts: RunOptions,
 ): RunResult {
-  const state = createInitialState(manifest, roster, seedRoot);
+  const state = structuredClone(initial);
   const actionLog: CanonicalActionEvent[] = [];
   const checkpoints: Checkpoint[] = [];
   const events: SemanticEvent[] = [];
@@ -57,7 +59,8 @@ export function runSim(
   let lastEventHash: string | null = null;
   let haltedAtTick: number | null = null;
 
-  tickLoop: for (let t = 1; t <= opts.ticks; t++) {
+  const startTick = state.tick;
+  tickLoop: for (let t = state.tick + 1; t <= startTick + opts.ticks; t++) {
     const retainLog = opts.retainActionLog !== false; // default true
 
     // Record event index at tick start (before any events added) for belief formation
@@ -79,20 +82,24 @@ export function runSim(
       let action: Action;
       let actionSource: "reflex" | "utility" | "resolver";
       let cands: ScoredCandidate[] | null = null;
+      let chosenKey: UtilityKey | null = null;
       const injected = opts.injectedActions?.get(`${t}:${npc.npcId}`);
       if (injected !== undefined) {
         ({ action, actionSource } = injected);
+        chosenKey = null;
       } else {
         const effPolicy = applyBeliefs(npc.policy, npc.beliefs, seasonAt(t, manifest));
         const reflex = reflexDecide(obs, effPolicy);
         if (reflex !== null) {
           action = reflex;
           actionSource = "reflex";
+          chosenKey = null;
         } else {
           cands = scoreCandidates(obs, npc.identity, effPolicy, manifest, seedRoot);
           const resolution = resolve(cands, npc.identity, effPolicy.deliberationEpsilon, seedRoot, npc.npcId, t);
           action = resolution.action;
           actionSource = resolution.source;
+          chosenKey = resolution.key;
         }
       }
 
@@ -103,6 +110,7 @@ export function runSim(
         actionSource,
         action,
         candidates: cands,
+        chosenKey,
       });
 
       const legal = applyAction(state, manifest, npc, action);
@@ -163,6 +171,16 @@ export function runSim(
   }
 
   return { finalState: state, actionLog, checkpoints, events, tickHashes, haltedAtTick };
+}
+
+export function runSim(
+  manifest: WorldManifest,
+  roster: RosterEntry[],
+  seedRoot: string,
+  opts: RunOptions,
+): RunResult {
+  const initial = createInitialState(manifest, roster, seedRoot);
+  return runFromState(initial, manifest, seedRoot, opts);
 }
 
 /** Recomputes the previousEventHash chain. */

@@ -48,6 +48,17 @@ export function scoreCandidates(
     });
   }
 
+  if (obs.self.reproReady) {
+    const mate = obs.visibleNpcs.find((n) => n.fertileAdult);
+    if (mate !== undefined) {
+      candidates.push({
+        key: "seekMate",
+        score: w.seekMate - 15 * mate.dist,
+        action: mate.dist <= 1 ? { verb: "idle" } : moveToward(obs.self.pos, mate.pos),
+      });
+    }
+  }
+
   {
     const dir = DIRS[drawInt(seedRoot, 8, "explore", obs.self.npcId, obs.tick)]!;
     const to = { x: obs.self.pos.x + dir.x, y: obs.self.pos.y + dir.y };

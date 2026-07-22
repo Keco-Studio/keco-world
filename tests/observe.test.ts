@@ -37,6 +37,6 @@ describe("observation", () => {
     expect(obs.tick).toBe(150);
     expect(obs.season).toBe("winter");
     expect(obs.onShelter).toBe(true);
-    expect(obs.self).toEqual({ npcId: npc.npcId, pos: { x: 2, y: 2 }, hp: npc.hp, energy: npc.energy, berries: 0 });
+    expect(obs.self).toEqual({ npcId: npc.npcId, pos: { x: 2, y: 2 }, hp: npc.hp, energy: npc.energy, berries: 0, reproReady: obs.self.reproReady });
   });
 });

@@ -1,12 +1,14 @@
 import type { Vec2, WorldManifest } from "../schema/core.js";
 import type { WorldState, NpcState } from "../world/state.js";
-import { chebyshev, seasonAt, isOnShelter } from "../world/state.js";
+import { chebyshev, seasonAt, isOnShelter, npcAge } from "../world/state.js";
+import { isFertileEligible } from "../world/rules.js";
 
 export interface Observation {
   tick: number;
   season: "summer" | "winter";
   onShelter: boolean;
-  self: { npcId: string; pos: Vec2; hp: number; energy: number; berries: number };
+  self: { npcId: string; pos: Vec2; hp: number; energy: number; berries: number; reproReady: boolean };
+  visibleNpcs: { npcId: string; pos: Vec2; dist: number; fertileAdult: boolean }[];
   visibleBushes: { id: string; pos: Vec2; berries: number; dist: number }[];
   wolf: { pos: Vec2; dist: number } | null;
   nearestShelter: { pos: Vec2; dist: number } | null;
@@ -17,6 +19,22 @@ export function buildObservation(
   manifest: WorldManifest,
   npc: NpcState,
 ): Observation {
+  const visibleNpcs = state.npcs
+    .filter((other) => other.npcId !== npc.npcId && other.alive)
+    .map((other) => {
+      const dist = chebyshev(npc.pos, other.pos);
+      const age = npcAge(other, state.tick);
+      const fertileAdult = age >= manifest.adultAgeTicks && age <= manifest.elderAgeTicks;
+      return {
+        npcId: other.npcId,
+        pos: { x: other.pos.x, y: other.pos.y },
+        dist,
+        fertileAdult,
+      };
+    })
+    .filter((n) => n.dist <= manifest.visionRadius)
+    .sort((a, b) => (a.dist - b.dist) || (a.npcId < b.npcId ? -1 : a.npcId > b.npcId ? 1 : 0));
+
   const visibleBushes = state.bushes
     .map((b) => ({ id: b.id, pos: { x: b.pos.x, y: b.pos.y }, berries: b.berries, dist: chebyshev(npc.pos, b.pos) }))
     .filter((b) => b.dist <= manifest.visionRadius)
@@ -40,7 +58,15 @@ export function buildObservation(
     tick: state.tick,
     season: seasonAt(state.tick, manifest),
     onShelter: isOnShelter(npc.pos, manifest),
-    self: { npcId: npc.npcId, pos: { x: npc.pos.x, y: npc.pos.y }, hp: npc.hp, energy: npc.energy, berries: npc.berries },
+    self: {
+      npcId: npc.npcId,
+      pos: { x: npc.pos.x, y: npc.pos.y },
+      hp: npc.hp,
+      energy: npc.energy,
+      berries: npc.berries,
+      reproReady: isFertileEligible(npc, manifest, state.tick),
+    },
+    visibleNpcs,
     visibleBushes,
     wolf,
     nearestShelter,

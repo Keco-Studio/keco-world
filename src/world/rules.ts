@@ -7,6 +7,21 @@ import { hashCanonical } from "../canon/canonicalize.js";
 import { breed } from "../life/genome.js";
 import { DIRS } from "../mind/utility.js";
 
+/**
+ * Check if an NPC is fertile-eligible: adult age in window, enough energy, cooldown passed.
+ * Used by both reproduce logic and observation (reproReady field).
+ */
+export function isFertileEligible(npc: NpcState, manifest: WorldManifest, tick: number): boolean {
+  const age = npcAge(npc, tick);
+  return (
+    npc.alive &&
+    age >= manifest.adultAgeTicks &&
+    age <= manifest.elderAgeTicks &&
+    npc.energy >= manifest.reproEnergyMin &&
+    tick >= npc.reproCooldownUntil
+  );
+}
+
 export const NAME_POOL = [
   "Rill", "Ash", "Fenna", "Bram", "Sorrel", "Wren", "Tarn", "Isla", "Corin", "Vesna",
   "Odo", "Merle", "Sable", "Quinn", "Petra", "Lorn", "Hazel", "Garen", "Nyx", "Ives",
@@ -91,26 +106,18 @@ export function reproductionStep(
   seedRoot: string,
   events: SemanticEvent[],
 ): void {
-  const age = (npc: NpcState) => npcAge(npc, state.tick);
-  const isEligible = (npc: NpcState): boolean =>
-    npc.alive &&
-    age(npc) >= manifest.adultAgeTicks &&
-    age(npc) <= manifest.elderAgeTicks &&
-    npc.energy >= manifest.reproEnergyMin &&
-    state.tick >= npc.reproCooldownUntil;
-
   const paired = new Set<string>(); // track paired npcIds this tick
   let birthIdx = 0;
 
   for (let i = 0; i < state.npcs.length; i++) {
     const a = state.npcs[i]!;
-    if (!isEligible(a) || paired.has(a.npcId)) continue;
+    if (!isFertileEligible(a, manifest, state.tick) || paired.has(a.npcId)) continue;
 
     // Find first later eligible unpaired partner within Chebyshev distance 1
     let b: NpcState | null = null;
     for (let j = i + 1; j < state.npcs.length; j++) {
       const candidate = state.npcs[j]!;
-      if (isEligible(candidate) && !paired.has(candidate.npcId) && chebyshev(a.pos, candidate.pos) <= 1) {
+      if (isFertileEligible(candidate, manifest, state.tick) && !paired.has(candidate.npcId) && chebyshev(a.pos, candidate.pos) <= 1) {
         b = candidate;
         break;
       }

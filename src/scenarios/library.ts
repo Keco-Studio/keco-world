@@ -152,8 +152,17 @@ function scenario(
 }
 
 /**
- * First 10 fixed scenarios (hunger/winter/predator). Ids are frozen test-set identities —
- * do not renumber or reorder existing entries when extending the library.
+ * Fixed 30-scenario library across six categories (hunger, winter, predator, courtship,
+ * hesitation, sequence). Ids are frozen test-set identities — do not renumber or reorder
+ * existing entries when extending the library.
+ *
+ * NOTE: task-3-brief.md's scenario table lists 21 new rows (P3-P5, C1-C5, Z1-Z4, S1-S5,
+ * H6-H7, W4-W5) despite its own header claiming "20 new / 30 total". Task 2's 10 + all 21
+ * would be 31, which fails the suite's `SCENARIOS.length === 30` assertion. H6 ("nearest
+ * vs richest bush") was dropped to reconcile: hunger already has 6 scenarios without it
+ * (H1-H5, H7), the ".find takes nearest" behavior it targets is independently covered by
+ * tests/candidates.test.ts and tests/utility.test.ts, and it is not referenced by id in any
+ * assertion. See task-3-report.md for the full rationale.
  */
 export const SCENARIOS: Scenario[] = [
   scenario("H1", "hunger", "fed near food", 1, {
@@ -208,5 +217,135 @@ export const SCENARIOS: Scenario[] = [
     focal: { pos: { x: 5, y: 5 }, energy: 400 },
     bushes: [{ pos: { x: 6, y: 5 }, berries: 3 }],
     wolfPos: { x: 9, y: 5 },
+  }),
+
+  // --- Predator (P3-P5) ---
+  scenario("P3", "predator", "reflex boundary — wolf at distance two", 1, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 } },
+    wolfPos: { x: 7, y: 5 },
+  }),
+  scenario("P4", "predator", "retreat-and-forage sequence", 20, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 500 },
+    bushes: [{ pos: { x: 4, y: 5 }, berries: 3 }],
+    wolfPos: { x: 10, y: 5 },
+  }),
+  scenario("P5", "predator", "winter predator tension", 1, {
+    tick: 450,
+    focal: { pos: { x: 5, y: 5 }, energy: 700 },
+    wolfPos: { x: 9, y: 5 },
+  }),
+
+  // --- Courtship (C1-C5) ---
+  scenario("C1", "courtship", "courtship approach", 1, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 800, reproCooldownUntil: 0 },
+    others: [{ pos: { x: 8, y: 5 } }],
+  }),
+  scenario("C2", "courtship", "courtship adjacent wait", 1, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 800, reproCooldownUntil: 0 },
+    others: [{ pos: { x: 6, y: 5 } }],
+  }),
+  scenario("C3", "courtship", "courtship suppressed by hunger", 1, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 500, reproCooldownUntil: 0 },
+    others: [{ pos: { x: 8, y: 5 } }],
+  }),
+  scenario("C4", "courtship", "courtship blocked by juvenile", 1, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 800, reproCooldownUntil: 0 },
+    others: [{ pos: { x: 8, y: 5 }, birthTick: 10 }],
+  }),
+  scenario("C5", "courtship", "courtship approach across the map", 30, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 900 },
+    others: [{ pos: { x: 12, y: 12 } }],
+    bushes: [{ pos: { x: 6, y: 6 }, berries: 2 }],
+  }),
+
+  // --- Hesitation (Z1-Z4) ---
+  scenario("Z1", "hesitation", "forage, seek-mate, or explore near-tie", 1, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 620 },
+    others: [{ pos: { x: 7, y: 7 } }],
+    bushes: [{ pos: { x: 7, y: 5 }, berries: 3 }],
+  }),
+  scenario("Z2", "hesitation", "near-tie at greater distance", 1, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 640 },
+    others: [{ pos: { x: 8, y: 8 } }],
+    bushes: [{ pos: { x: 8, y: 5 }, berries: 3 }],
+  }),
+  scenario("Z3", "hesitation", "eat-or-shelter tension", 1, {
+    tick: 450,
+    focal: { pos: { x: 5, y: 5 }, energy: 640 },
+    bushes: [{ pos: { x: 6, y: 5 }, berries: 2 }],
+  }),
+  scenario("Z4", "hesitation", "consume joins the hesitation band", 1, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 620, berries: 1 },
+    others: [{ pos: { x: 7, y: 7 } }],
+    bushes: [{ pos: { x: 7, y: 5 }, berries: 3 }],
+  }),
+
+  // --- Sequence (S1-S5) ---
+  scenario("S1", "sequence", "forced exploration, empty bushes", 40, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 500 },
+    bushes: [
+      { pos: { x: 5, y: 5 }, berries: 0 },
+      { pos: { x: 10, y: 3 }, berries: 0 },
+    ],
+  }),
+  scenario("S2", "sequence", "travel and harvest a bush cluster", 40, {
+    tick: 10,
+    focal: { pos: { x: 3, y: 3 }, energy: 450 },
+    bushes: [
+      { pos: { x: 12, y: 12 }, berries: 5 },
+      { pos: { x: 13, y: 12 }, berries: 5 },
+      { pos: { x: 12, y: 13 }, berries: 5 },
+    ],
+  }),
+  scenario("S3", "sequence", "winter onset during a long run", 40, {
+    tick: 380,
+    focal: { pos: { x: 10, y: 10 }, energy: 700 },
+    bushes: [{ pos: { x: 11, y: 10 }, berries: 2 }],
+    manifestOverrides: { shelters: [{ x: 2, y: 2 }] },
+  }),
+  scenario("S4", "sequence", "risky rich bush vs safe poor bush", 40, {
+    tick: 10,
+    focal: { pos: { x: 3, y: 3 }, energy: 400 },
+    bushes: [
+      { pos: { x: 9, y: 9 }, berries: 5 },
+      { pos: { x: 2, y: 2 }, berries: 1 },
+    ],
+    wolfPos: { x: 8, y: 8 },
+  }),
+  scenario("S5", "sequence", "court then feed cycle", 40, {
+    tick: 10,
+    focal: { pos: { x: 4, y: 4 }, energy: 900 },
+    others: [{ pos: { x: 4, y: 3 }, energy: 900 }],
+    bushes: [{ pos: { x: 10, y: 10 }, berries: 3 }],
+  }),
+
+  // --- Hunger (H6-H7; H6 dropped — see file-header note) ---
+  scenario("H7", "hunger", "desperate empty world", 1, {
+    tick: 10,
+    focal: { pos: { x: 5, y: 5 }, energy: 50, berries: 0 },
+    bushes: [],
+  }),
+
+  // --- Winter (W4-W5) ---
+  scenario("W4", "winter", "hunger vs cold", 1, {
+    tick: 450,
+    focal: { pos: { x: 6, y: 6 }, energy: 300 },
+    bushes: [{ pos: { x: 6, y: 5 }, berries: 3 }],
+  }),
+  scenario("W5", "winter", "leave shelter to eat?", 20, {
+    tick: 430,
+    focal: { pos: { x: 2, y: 2 }, energy: 550 },
+    bushes: [{ pos: { x: 4, y: 4 }, berries: 3 }],
   }),
 ];

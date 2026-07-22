@@ -174,3 +174,101 @@ seekMate courtship works as designed — it measurably increases adjacency and t
 ### Explicitly out of scope for Task 5
 
 Per the plan's Step 3 and the self-review notes on scope honesty: this task swept `birthChancePpm` only, exactly as scoped, and did not implement any new reproduction/adjacency mechanism (migration, multi-pair concurrency, lowered `reproEnergyMin`/`reproCooldownTicks`, non-demo manifest, etc.) to force a gate pass. The gate FAILED after the full prescribed sweep. This is recorded here as the honest outcome for the controller to escalate into a new, explicitly-scoped follow-up plan.
+
+---
+
+## Task 5b: replacement-rate diagnosis and sustainable demo-world parameters (2026-07-22)
+
+**Date** 2026-07-22
+**Purpose** Test the follow-up hypothesis Task 5 left open — that the demo world's lifetime reproduction budget is below replacement (`reproCooldownTicks = 600` against a 1600-tick fertile window caps each NPC to ~2–3 lifetime births, and with child mortality that nets out below sustainability) — with an in-process diagnostic script (throwaway, not committed), then run a targeted parameter sweep guided by the result.
+**World** Same `makeDemoManifest()` / `makeDemoRoster(seed)` demo world, `birthChancePpm` at the pre-Task-5b default (15,000, i.e. before this task's parameter change) for the diagnostic phase.
+**Method** `runSim` invoked directly (not via the `evolve` CLI) for the diagnostic phase, 3 seeds (`diag-1`, `diag-2`, `diag-3`) × 60,000 ticks, instrumented to compute per-NPC lifetime birth counts, survival-to-adulthood rate, deaths by cause × age band, inter-birth intervals, and a population-count trajectory reconstructed from the birth/death event log. All figures below are from that instrumentation; the script was deleted after this write-up per the "calibration artifacts are not committed" convention.
+
+### Phase 1 — Diagnostic results (current demo params: `reproCooldownTicks=600`, `reproEnergyMin=600`, `birthChancePpm=15,000`, `childStartHp/Energy=600`)
+
+| Metric | diag-1 | diag-2 | diag-3 |
+|---|---|---|---|
+| Final population | 0 | 0 | 0 |
+| Children born | 53 | 50 | 63 |
+| Children surviving to `adultAgeTicks` (800) | 45 | 43 | 58 |
+| Survival-to-adulthood rate | 84.9% | 86.0% | 92.1% |
+| Adults-ever (founders + children who reached age ≥800 at some point) | 70 | 68 | 83 |
+| NPCs that completed the full fertile window (reached age ≥2400) | 46 | 51 | 67 |
+| Mean lifetime births, NPCs completing fertile window (mean / median / max) | 1.87 / 2 / 3 | 1.67 / 2 / 3 | 1.67 / 2 / 3 |
+| Mean lifetime births, all adults-ever (mean / median / max) | 1.51 / 2 / 3 | 1.47 / 1 / 3 | 1.52 / 2 / 3 |
+| Birth-count histogram (adults-ever): 0 / 1 / 2 / 3 / 4+ | 10 / 22 / 30 / 8 / 0 | 8 / 27 / 26 / 7 / 0 | 10 / 28 / 37 / 8 / 0 |
+| Mean inter-birth interval per parent (ticks; cooldown = 600) | 795.5 | 751.2 | 770.3 |
+| **Births-per-adult-lifetime** (2×births / adults-ever) | 1.514 | 1.471 | 1.518 |
+| **Net replacement rate** (births-per-adult-lifetime × survival-to-adulthood) | **1.286** | **1.265** | **1.398** |
+| Deaths — old_age (all elder-band) | 46 | 51 | 67 |
+| Deaths — cold (adult / juvenile) | 20 / 6 | 13 / 4 | 15 / 3 |
+| Deaths — starvation (adult / juvenile) | 4 / 1 | 4 / 2 | 1 / 2 |
+| Deaths — wolf (juvenile) | 1 | 1 | 0 |
+| Last birth tick / population-extinct tick | 8276 / 10255 | 13388 / 16003 | 12874 / 15744 |
+
+**Aggregate replacement arithmetic**: births-per-adult-lifetime ≈ **1.50**, survival-to-adulthood ≈ **87.7%**, **net replacement rate ≈ 1.32** — i.e. **the mean-field arithmetic is comfortably above the 1.0 sustainability threshold**, not below it. This directly **refutes** the stated hypothesis: an average adult that lives out its fertile life produces ~1.5 births (in a system where each birth consumes two parent-slots), and with ~88% of those children surviving to adulthood, the long-run expected number of self-replacing offspring per adult is ~1.3, not <1.
+
+Additional evidence against the "cooldown-capped budget" framing specifically: the **mean inter-birth interval per parent (751–796 ticks) already exceeds `reproCooldownTicks` (600) by ~150–195 ticks** in every seed — i.e. cooldown is not the saturated/binding constraint on how often a parent reproduces; the gap between successive births is dominated by time-to-next-successful-pairing (adjacency + the `birthChancePpm` roll), not by the cooldown timer expiring. This is consistent with Task 5's finding that `birthChancePpm` alone (15k/50k/100k) could not fix extinction — the bottleneck was never purely "the roll" or purely "the cooldown."
+
+**So why does every seed still go extinct if the average math is sustainable?** The reconstructed population trajectory (alive-count every 2000 ticks) explains it:
+
+- diag-1: `17, 13, 15, 4, 1, 0, 0, …` (extinct tick 10255)
+- diag-2: `18, 9, 5, 3, 4, 4, 3, 1, 0, …` (extinct tick 16003)
+- diag-3: `21, 12, 10, 7, 8, 5, 4, 0, …` (extinct tick 15744)
+
+Population **peaks at the founder count (25, tick 0) and then declines monotonically in every seed** — it never grows, even transiently, despite the >1.0 mean replacement rate. Two compounding structural effects explain the gap between the mean-field math and the observed monotonic collapse:
+
+1. **Founder age-staggering front-loads the die-off.** `birthTick = -(adultAgeTicks + rand[0, elderAgeTicks - adultAgeTicks))` means founders start with an *average* remaining fertile window of only ~800 of the full 1600 ticks (some start already at the edge of `elderAgeTicks` and are one unlucky mate-search away from aging out having never reproduced — the birth-count histogram's "0 births" bucket, 8–10 of ~68–83 adults-ever per seed, is largely this group). Founders begin dying of old age within the first ~2000–3400 ticks, in a synchronized wave, while the *first* native-born cohort needs a full 800 ticks just to reach adulthood itself before it can contribute to reproduction — a generational-lag deficit between the founder die-off and the replacement cohort's maturation.
+2. **Once population falls into the single digits (every seed, by tick ~4000–8000), demographic stochasticity dominates the mean.** A population-average net replacement rate of 1.3 describes the expected trajectory of a large population; at N=3–5 individuals, the variance around that mean is large relative to the mean itself, and extinction (population 0) is an **absorbing state** — there is no immigration or spontaneous generation to recover from a bad run of luck (a mate search that fails right before a partner ages out, a cold-season death removing the only fertile pair, etc.). Every seed's trajectory shows small rebounds (e.g. diag-2's `3, 4, 4, 3`) before eventually hitting the absorbing zero — consistent with a minimum-viable-population bottleneck, not a mean-arithmetic shortfall. This matches (and gives a quantitative mechanism for) Task 5's qualitative "single narrow chain" observation.
+
+**Conclusion for Phase 2**: the originally-stated hypothesis (reproduction budget below replacement) is not supported by the data. The real lever is **throughput during the early bottleneck window** — anything that lets more founders reproduce at least once before their remaining fertile window runs out, and/or builds population size faster before it falls into the stochastic-collapse zone, should help even though it isn't fixing a mean-arithmetic deficit that doesn't actually exist.
+
+### Phase 2 — Targeted sweep
+
+Per the diagnosis, `reproCooldownTicks` was identified as *not* the saturated constraint (actual inter-birth intervals already exceed it), but reducing it further still increases the theoretical ceiling on reproduction attempts per fertile window and was the prescribed "most promising single change" to try first. `birthChancePpm` was set to 50,000 (middle of the Task-5-tested 15k–100k range that showed real, if insufficient on its own, improvement) as backdrop for all Phase 2 attempts, held fixed while `reproCooldownTicks`/`reproEnergyMin`/`childStartHp`/`childStartEnergy` were varied.
+
+**Attempt 1 (first and only attempt needed): `reproCooldownTicks: 600 → 200`, `birthChancePpm: 15,000 → 50,000`, `reproEnergyMin` and `childStartHp`/`childStartEnergy` left unchanged.**
+
+Run via `npm run evolve -- --seed <seed> --ticks 60000`, seeds `evo-1`/`evo-2`/`evo-3` (same seeds as Task 5, for direct comparability):
+
+| Metric | evo-1 | evo-2 | evo-3 |
+|---|---|---|---|
+| Final population | 24 | 15 | 22 |
+| Total births | 1170 | 1066 | 1008 |
+| Deaths — old_age | 289 | 271 | 268 |
+| Deaths — cold | 424 | 395 | 400 |
+| Deaths — starvation | 428 | 369 | 307 |
+| Deaths — wolf | 30 | 41 | 36 |
+| Max generation reached | 59 | 62 | 58 |
+| Mean generation (alive) | 57.58 | 60.80 | 56.68 |
+| Living lineages | 1/25 | 1/25 | 1/25 |
+| Beliefs held (mean/NPC) | 1734 (1.45) | 1797 (1.64) | 1605 (1.55) |
+| Beliefs formed | 879 | 900 | 826 |
+| Weight diversity | 90.56 | 95.10 | 94.35 |
+| **Gate pass?** (no extinction, final pop ∈ [10,60], maxGen ≥ 8) | **Yes** | **Yes** | **Yes** |
+
+**3/3 seeds pass.** Final populations (15–24) sit comfortably inside `[10, 60]` — well clear of both extinction and the 60-NPC cap (no cap-pinning/mass-starvation signature observed) — and max generation (58–62) is far above the ≥8 threshold. No second attempt or dimension combination was needed; the sweep stopped after Attempt 1 per the plan's "stop as soon as a config passes" instruction.
+
+**Interesting residual pattern**: living lineages is 1/25 in all three seeds — i.e. the same single-narrow-chain dynamic identified in Task 5 (and explained mechanistically in Phase 1 above) still occurs; only one of the 25 founder lineages survives long-term in each run. What changed is not the *dominance pattern* but its **stochastic robustness**: at this throughput, the one surviving lineage's reproduction rate is high enough (1000+ total births per run, vs. 28–150 pre-sweep) to reliably escape the early bottleneck and sustain a stable population (15–24 NPCs) for the rest of the 60,000-tick run instead of eventually hitting the tick where the single remaining chain's next link fails to form. Fixing the lineage-diversity pattern itself (getting more than 1 of 25 founder lineages to survive long-term) remains unaddressed and would need mechanism-level work (e.g. reducing founder age-staggering variance, or migration/multi-pair-concurrency) — out of scope for this parameter-only sweep, consistent with Task 5's scope notes.
+
+### Chosen parameters and rationale
+
+`src/cli/demo.ts` (`makeDemoManifest()`) changed:
+
+```
+reproCooldownTicks: 600 → 200
+birthChancePpm:     15,000 → 50,000
+```
+
+(`reproEnergyMin`, `childStartHp`, `childStartEnergy` left at their prior values — 600/600/600 — since Attempt 1 already cleared the gate and no further dimensions needed testing.)
+
+### Success gate verdict
+
+**PASSED.** The gate (≥2 of 3 seeds: no extinction, final population ∈ [10, 60], maxGeneration ≥ 8) passed on **3/3 seeds** at `reproCooldownTicks=200` / `birthChancePpm=50,000`, on the first Phase 2 attempt.
+
+### Known unknowns refreshed after Task 5b
+
+- **The "reproduction budget below replacement" hypothesis is now experimentally refuted** for the pre-Task-5b parameters: mean-field net replacement rate was ≈1.32, above the 1.0 threshold, computed directly from births-per-adult-lifetime × survival-to-adulthood across 3 seeds. The actual failure mode was a founder-age-staggering-driven early bottleneck combined with small-population demographic stochasticity (extinction as an absorbing state), not an insufficient average lifetime birth count.
+- **The single-narrow-chain / low-lineage-diversity pattern persists even after the gate passes** (1/25 living lineages in all three post-sweep runs) — it no longer causes extinction at this throughput, but it means the demo world's genetic/cultural diversity is still concentrated in one lineage, not spread across founders. A future task aimed at lineage diversity (rather than bare survival) would need a different, explicitly-scoped mechanism (e.g. reduced founder age-staggering variance, migration, or multi-pair concurrency), per Task 5's original candidate list.
+- **`reproCooldownTicks` was confirmed non-saturated pre-sweep** (mean inter-birth interval exceeded the cooldown by ~150–195 ticks) yet reducing it further still helped — most plausibly by raising the *ceiling* on reproduction attempts during the critical early-bottleneck ticks for the few NPCs that do successfully pair repeatedly, rather than by relieving a binding constraint on the population average.
+- **`reproEnergyMin` and `childStartHp`/`childStartEnergy` were not tested** in this task, since Attempt 1 already passed. If a future change to `reproCooldownTicks`/`birthChancePpm` needs to be reverted or tuned differently, these remain untried levers per Phase 1's juvenile-mortality data (survival-to-adulthood was already 85–92% pre-sweep, so their expected marginal effect is smaller than the throughput levers that were tried).

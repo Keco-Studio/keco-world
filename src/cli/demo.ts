@@ -66,6 +66,7 @@ export function makeDemoRoster(seedRoot: string): RosterEntry[] {
           forage: vary(seedRoot, 600, 250, "w-forage", i),
           consume: vary(seedRoot, 800, 150, "w-consume", i),
           shelter: vary(seedRoot, 700, 250, "w-shelter", i),
+          seekMate: vary(seedRoot, 500, 200, "w-seekmate", i),
           explore: vary(seedRoot, 200, 180, "w-explore", i),
           idle: vary(seedRoot, 50, 40, "w-idle", i),
         },

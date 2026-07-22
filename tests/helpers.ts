@@ -46,7 +46,7 @@ export function makeTestRoster(n: number): RosterEntry[] {
     name: `NPC ${i + 1}`,
     identity: { riskTolerance: 500, socialTrust: 500, explorationBias: 400, patience: 500, voiceStyle: "" },
     policy: {
-      utilityWeights: { forage: 600, consume: 800, shelter: 700, explore: 200, idle: 50 },
+      utilityWeights: { forage: 600, consume: 800, shelter: 700, seekMate: 500, explore: 200, idle: 50 },
       thresholds: { hungerUrgent: 150 },
       deliberationEpsilon: 60,
     },

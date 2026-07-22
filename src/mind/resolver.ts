@@ -15,6 +15,8 @@ export function affinity(key: UtilityKey, identity: Identity): number {
       return identity.patience; // patient gatherers
     case "shelter":
       return 1000 - identity.riskTolerance; // cautious seek walls
+    case "seekMate":
+      return identity.socialTrust; // social companions
     case "explore":
       return identity.explorationBias;
     case "idle":

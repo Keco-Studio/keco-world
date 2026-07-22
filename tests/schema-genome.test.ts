@@ -5,7 +5,7 @@ import { makeTestManifest, makeTestRoster, makeTestBelief } from "./helpers.js";
 
 describe("genome schemas", () => {
   it("schema version bumped", () => {
-    expect(SCHEMA_VERSION).toBe("phase1a-v1");
+    expect(SCHEMA_VERSION).toBe("phase1a-v2");
   });
   it("belief validates and rejects out-of-range modifiers", () => {
     BeliefS.parse(makeTestBelief());
@@ -34,6 +34,6 @@ describe("genome schemas", () => {
     SemanticEventS.parse({ tick: 5, kind: "belief_formed", npcId: "npc-1", data: { target: "w:shelter" } });
   });
   it("EFFECT_TARGETS is the closed list", () => {
-    expect(EFFECT_TARGETS).toEqual(["w:forage", "w:consume", "w:shelter", "w:explore", "w:idle", "t:hungerUrgent"]);
+    expect(EFFECT_TARGETS).toEqual(["w:forage", "w:consume", "w:shelter", "w:seekMate", "w:explore", "w:idle", "t:hungerUrgent"]);
   });
 });

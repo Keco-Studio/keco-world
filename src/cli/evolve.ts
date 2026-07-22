@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { RunResult } from "../sim/engine.js";
 import { runSim } from "../sim/engine.js";
 import type { RosterEntry } from "../schema/core.js";
+import { UTILITY_KEYS } from "../schema/core.js";
 import { makeDemoManifest, makeDemoRoster } from "./demo.js";
 
 export interface EvolutionSummary {
@@ -57,8 +58,7 @@ export function summarizeEvolution(result: RunResult, roster: RosterEntry[]): Ev
   // Calculate weight diversity (mean pairwise L1 distance of utilityWeights over alive NPCs)
   let weightDiversity100 = 0;
   if (aliveNpcs.length >= 2) {
-    const utilityKeys = ["forage", "consume", "shelter", "explore", "idle"] as const;
-    const weights = aliveNpcs.map((n) => utilityKeys.map((k) => n.policy.utilityWeights[k]));
+    const weights = aliveNpcs.map((n) => UTILITY_KEYS.map((k) => n.policy.utilityWeights[k]));
 
     // Compute mean pairwise L1 distance
     let totalDistance = 0;
@@ -72,7 +72,7 @@ export function summarizeEvolution(result: RunResult, roster: RosterEntry[]): Ev
     }
 
     const meanDistance = totalDistance / pairCount;
-    const normalizedDiversity = meanDistance / utilityKeys.length;
+    const normalizedDiversity = meanDistance / UTILITY_KEYS.length;
     weightDiversity100 = Math.floor(normalizedDiversity * 100);
   }
 

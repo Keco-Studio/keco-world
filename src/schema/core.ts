@@ -1,11 +1,11 @@
 import { z } from "zod";
 
-export const SCHEMA_VERSION = "phase1a-v1";
+export const SCHEMA_VERSION = "phase1a-v2";
 
 const Int = z.number().int();
 const Milli = Int.min(0).max(1000); // 0..1000 fixed-point "per-mille" scale
 
-export const EFFECT_TARGETS = ["w:forage", "w:consume", "w:shelter", "w:explore", "w:idle", "t:hungerUrgent"] as const;
+export const EFFECT_TARGETS = ["w:forage", "w:consume", "w:shelter", "w:seekMate", "w:explore", "w:idle", "t:hungerUrgent"] as const;
 export type EffectTarget = (typeof EFFECT_TARGETS)[number];
 
 export const BeliefS = z
@@ -29,12 +29,12 @@ export type Belief = z.infer<typeof BeliefS>;
 export const Vec2S = z.object({ x: Int, y: Int }).strict();
 export type Vec2 = z.infer<typeof Vec2S>;
 
-export const UTILITY_KEYS = ["forage", "consume", "shelter", "explore", "idle"] as const;
+export const UTILITY_KEYS = ["forage", "consume", "shelter", "seekMate", "explore", "idle"] as const;
 export type UtilityKey = (typeof UTILITY_KEYS)[number];
 
 /** Closed key set (P4/R10): evolution may change values, never keys. */
 export const UtilityWeightsS = z
-  .object({ forage: Milli, consume: Milli, shelter: Milli, explore: Milli, idle: Milli })
+  .object({ forage: Milli, consume: Milli, shelter: Milli, seekMate: Milli, explore: Milli, idle: Milli })
   .strict();
 
 export const IdentityS = z

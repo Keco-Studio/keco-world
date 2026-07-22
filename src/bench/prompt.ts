@@ -24,9 +24,13 @@ export function shuffleOrder(trigger: TriggerPoint): number[] {
 /** Neutral action description — never includes scores or utility hints. */
 export function describeAction(c: ScoredCandidate): string {
   const a = c.action;
+  // Handle idle with seekMate before verb switch
+  if (c.key === "seekMate" && a.verb === "idle") {
+    return `stay close to your companion`;
+  }
   switch (a.verb) {
     case "move":
-      return `walk one step to (${a.to.x}, ${a.to.y}) — heading ${c.key === "shelter" ? "toward shelter" : c.key === "forage" ? "toward a berry bush" : "somewhere new"}`;
+      return `walk one step to (${a.to.x}, ${a.to.y}) — heading ${c.key === "shelter" ? "toward shelter" : c.key === "forage" ? "toward a berry bush" : c.key === "seekMate" ? "toward a companion" : "somewhere new"}`;
     case "take":
       return `pick a berry from the bush right here (${a.target})`;
     case "consume":

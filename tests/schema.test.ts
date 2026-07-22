@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { PolicyS, WorldManifestS, SCHEMA_VERSION, UTILITY_KEYS } from "../src/schema/core.js";
 import { ActionS, CanonicalActionEventS } from "../src/schema/log.js";
 
-const validWeights = { forage: 500, consume: 800, shelter: 600, explore: 200, idle: 50 };
+const validWeights = { forage: 500, consume: 800, shelter: 600, seekMate: 500, explore: 200, idle: 50 };
 
 describe("core schemas", () => {
   it("accepts a valid policy", () => {
@@ -28,10 +28,10 @@ describe("core schemas", () => {
     ).toThrow();
   });
   it("UTILITY_KEYS is the closed key list", () => {
-    expect(UTILITY_KEYS).toEqual(["forage", "consume", "shelter", "explore", "idle"]);
+    expect(UTILITY_KEYS).toEqual(["forage", "consume", "shelter", "seekMate", "explore", "idle"]);
   });
   it("manifest requires schemaVersion", () => {
-    expect(SCHEMA_VERSION).toBe("phase1a-v1");
+    expect(SCHEMA_VERSION).toBe("phase1a-v2");
     expect(() => WorldManifestS.parse({})).toThrow();
   });
 });

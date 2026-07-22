@@ -15,7 +15,8 @@
     "bench": "tsx src/cli/bench.ts",
     "evolve": "tsx src/cli/evolve.ts",
     "behavior": "tsx src/cli/behavior.ts",
-    "biography": "tsx src/cli/biography.ts"
+    "biography": "tsx src/cli/biography.ts",
+    "degradation": "tsx src/cli/degradation.ts"
   },
   "keywords": [],
   "author": "",

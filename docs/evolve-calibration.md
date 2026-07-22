@@ -272,3 +272,32 @@ birthChancePpm:     15,000 → 50,000
 - **The single-narrow-chain / low-lineage-diversity pattern persists even after the gate passes** (1/25 living lineages in all three post-sweep runs) — it no longer causes extinction at this throughput, but it means the demo world's genetic/cultural diversity is still concentrated in one lineage, not spread across founders. A future task aimed at lineage diversity (rather than bare survival) would need a different, explicitly-scoped mechanism (e.g. reduced founder age-staggering variance, migration, or multi-pair concurrency), per Task 5's original candidate list.
 - **`reproCooldownTicks` was confirmed non-saturated pre-sweep** (mean inter-birth interval exceeded the cooldown by ~150–195 ticks) yet reducing it further still helped — most plausibly by raising the *ceiling* on reproduction attempts during the critical early-bottleneck ticks for the few NPCs that do successfully pair repeatedly, rather than by relieving a binding constraint on the population average.
 - **`reproEnergyMin` and `childStartHp`/`childStartEnergy` were not tested** in this task, since Attempt 1 already passed. If a future change to `reproCooldownTicks`/`birthChancePpm` needs to be reverted or tuned differently, these remain untried levers per Phase 1's juvenile-mortality data (survival-to-adulthood was already 85–92% pre-sweep, so their expected marginal effect is smaller than the throughput levers that were tried).
+
+---
+
+## 行为漂移初测 (2026-07-22)
+
+**Date** 2026-07-22
+**Command** `npm run behavior -- --seed evo-1 --ticks 60000` (fresh rerun for this paragraph; report copied to `docs/examples/behavior-evo1.json`), plus `npm run biography -- --seed evo-1 --ticks 60000 --top 2` (best biography copied to `docs/examples/biography-evo1-Garen.md`)
+**World** Same `makeDemoManifest()` / `makeDemoRoster("evo-1")` demo world as the calibration runs above, post-Task-5b parameters (`reproCooldownTicks=200`, `birthChancePpm=50,000`).
+**Purpose** First measurement of the founders-vs-evolved behavioral distance instruments built in this plan (Tasks 1–7): fixed-scenario verb histograms, n-gram profiles, per-key proportion shifts, and disagreement rate, applied to a real 60,000-tick evo-1 run (25 founders, max generation 59, 24 alive at the end) rather than the small unit-test worlds.
+
+**Headline numbers (actuals from the fresh rerun above, `docs/examples/behavior-evo1.json`):**
+
+| Metric | Value |
+|---|---|
+| verbL1 (founders vs. evolved, pooled) | 0.6562 |
+| disagreementRate | 25.8% (0.2581) |
+| bigramL1 | 0.7986 |
+| Top key shift #1 | `idle` +0.3030 |
+| Top key shift #2 | `explore` −0.2877 |
+| Top key shift #3 | `shelter` −0.0379 |
+| Intra-founder diversity (mean pairwise verbL1) | 0.3689 |
+| Intra-evolved diversity (mean pairwise verbL1) | 0.4711 |
+| Cross distance (founders × evolved, mean pairwise verbL1) | 0.8694 |
+
+These match the plan's stated headline figures (verbL1 0.656, disagreementRate 25.8%, evolved intra-diversity 0.471 vs. founders 0.369) to the precision given. The dominant behavioral shift across the 30 fixed scenarios is founders-to-evolved substituting `explore` for `idle` — evolved genomes are noticeably less exploratory and more prone to standing still than their founders, consistent with the `explore` weight drift narrated in the Garen-lineage biography's closing paragraph ("更疏于远行"). Evolved NPCs also disagree with founders on the modal first-decision verb in just over a quarter of scenarios (25.8%), and are themselves more behaviorally diverse from each other (intra-evolved 0.471) than founders were from each other (intra-founder 0.369) — i.e. 59 generations of drift under in-world selection produced both a population-level shift (toward idling, away from exploring) and increased within-population spread, not convergence to a single optimum.
+
+**Status: 初测, not a validated novelty gate.** This is a single-seed (evo-1), single-run measurement with no preregistration, no statistical comparison against a Fixed-Utility/Handcrafted baseline of the same size, and no effect-size/significance testing — exactly the kind of first look the plan's self-review notes flag as distinct from 1C's preregistered primary-endpoint gate (§6.7, effect size ≥0.62, Holm–Bonferroni correction, 150–200 judgments). These numbers establish that the instruments run end-to-end on a real, richly-evolved world and produce plausible, non-degenerate output; they do not establish that 59 generations of drift constitute meaningful behavioral novelty by any calibrated threshold.
+
+**Known gap carried forward:** §6.7's 行为新颖性 instrument list includes 状态访问分布 ("state-visit distribution") alongside action-distribution distance and n-grams. This plan implements the latter two (verb histograms, n-gram profiles) but does not implement state-visit-distribution tracking — that requires position/state-trace instrumentation through the scenario evaluator (`src/scenarios/`) that was out of scope for Tasks 1–7. It remains a deliberately deferred gap, not an oversight, per the plan's Task 7 self-review note.

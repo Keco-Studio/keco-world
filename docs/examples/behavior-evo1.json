@@ -1,0 +1,57 @@
+{
+  "seedRoot": "evo-1",
+  "ticks": 60000,
+  "foundersAlive": 25,
+  "evolvedAlive": 24,
+  "maxGeneration": 59,
+  "foundersVsEvolved": {
+    "verbL1": 0.6561530715005036,
+    "bigramL1": 0.7985666666666666,
+    "keyShift": {
+      "explore": -0.28769385699899297,
+      "forage": 0.031727089627391736,
+      "consume": 0.014964753272910379,
+      "shelter": -0.03791037260825781,
+      "seekMate": -0.02494461228600202,
+      "idle": 0.30301107754279955
+    },
+    "byCategory": {
+      "hunger": {
+        "verbL1": 0.49769230769230766
+      },
+      "winter": {
+        "verbL1": 0.6928682170542635
+      },
+      "predator": {
+        "verbL1": 0.6716666666666666
+      },
+      "courtship": {
+        "verbL1": 0.47941176470588237
+      },
+      "hesitation": {
+        "verbL1": 0.39833333333333326
+      },
+      "sequence": {
+        "verbL1": 0.7114833333333332
+      }
+    },
+    "disagreementRate": 0.25806451612903225
+  },
+  "intraFounderDiversity": 0.36894259818731123,
+  "intraEvolvedDiversity": 0.47105740181268907,
+  "crossDistance": 0.8693655589123869,
+  "topKeyShifts": [
+    [
+      "idle",
+      0.30301107754279955
+    ],
+    [
+      "explore",
+      -0.28769385699899297
+    ],
+    [
+      "shelter",
+      -0.03791037260825781
+    ]
+  ]
+}

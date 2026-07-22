@@ -21,7 +21,7 @@ export const CanonicalActionEventS = z
     npcId: z.string(),
     observationHash: Hash,
     action: ActionS,
-    actionSource: z.enum(["reflex", "utility", "resolver"]),
+    actionSource: z.enum(["reflex", "utility", "resolver", "random"]),
     deliberationTriggered: z.boolean(),
     energyCharged: Int.min(0),
     previousEventHash: Hash.nullable(),

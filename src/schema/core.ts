@@ -1,9 +1,18 @@
 import { z } from "zod";
 
-export const SCHEMA_VERSION = "phase1a-v2";
+export const SCHEMA_VERSION = "phase1a-v3";
 
 const Int = z.number().int();
 const Milli = Int.min(0).max(1000); // 0..1000 fixed-point "per-mille" scale
+
+export const CognitionS = z
+  .object({
+    decisionMode: z.enum(["utility", "random"]),
+    inheritanceMode: z.enum(["breed", "clone"]),
+    beliefDynamics: z.enum(["on", "off"]),
+  })
+  .strict();
+export type Cognition = z.infer<typeof CognitionS>;
 
 export const EFFECT_TARGETS = ["w:forage", "w:consume", "w:shelter", "w:seekMate", "w:explore", "w:idle", "t:hungerUrgent"] as const;
 export type EffectTarget = (typeof EFFECT_TARGETS)[number];
@@ -19,7 +28,7 @@ export const BeliefS = z
       })
       .strict(),
     confidence: Milli,
-    source: z.enum(["observed", "parentA", "parentB"]),
+    source: z.enum(["observed", "parentA", "parentB", "designed"]),
     acquiredTick: Int,
     decayPer100: Int.min(0).max(100),
   })
@@ -65,6 +74,7 @@ export type RosterEntry = z.infer<typeof RosterEntryS>;
 export const WorldManifestS = z
   .object({
     schemaVersion: z.literal(SCHEMA_VERSION),
+    cognition: CognitionS,
     gridWidth: Int.min(4),
     gridHeight: Int.min(4),
     seasonLengthTicks: Int.min(1),

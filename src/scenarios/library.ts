@@ -12,6 +12,7 @@ import type { Scenario, ScenarioCategory } from "./framework.js";
  */
 export const SCENARIO_MANIFEST_BASE: WorldManifest = {
   schemaVersion: SCHEMA_VERSION,
+  cognition: { decisionMode: "utility", inheritanceMode: "breed", beliefDynamics: "on" },
   gridWidth: 16,
   gridHeight: 16,
   seasonLengthTicks: 400,

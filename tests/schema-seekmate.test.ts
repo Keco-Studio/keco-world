@@ -6,7 +6,7 @@ import { makeTestRoster } from "./helpers.js";
 
 describe("seekMate key", () => {
   it("schema version and key sets updated", () => {
-    expect(SCHEMA_VERSION).toBe("phase1a-v2");
+    expect(SCHEMA_VERSION).toBe("phase1a-v3");
     expect(UTILITY_KEYS).toEqual(["forage", "consume", "shelter", "seekMate", "explore", "idle"]);
     expect(EFFECT_TARGETS).toContain("w:seekMate");
   });

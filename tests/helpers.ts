@@ -4,6 +4,7 @@ import { SCHEMA_VERSION } from "../src/schema/core.js";
 export function makeTestManifest(overrides: Partial<WorldManifest> = {}): WorldManifest {
   return {
     schemaVersion: SCHEMA_VERSION,
+    cognition: { decisionMode: "utility", inheritanceMode: "breed", beliefDynamics: "on" },
     gridWidth: 16,
     gridHeight: 16,
     seasonLengthTicks: 100,

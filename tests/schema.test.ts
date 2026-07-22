@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { PolicyS, WorldManifestS, SCHEMA_VERSION, UTILITY_KEYS } from "../src/schema/core.js";
+import { PolicyS, WorldManifestS, SCHEMA_VERSION, UTILITY_KEYS, CognitionS, BeliefS } from "../src/schema/core.js";
 import { ActionS, CanonicalActionEventS } from "../src/schema/log.js";
+import { makeTestManifest } from "./helpers.js";
 
 const validWeights = { forage: 500, consume: 800, shelter: 600, seekMate: 500, explore: 200, idle: 50 };
 
@@ -31,7 +32,7 @@ describe("core schemas", () => {
     expect(UTILITY_KEYS).toEqual(["forage", "consume", "shelter", "seekMate", "explore", "idle"]);
   });
   it("manifest requires schemaVersion", () => {
-    expect(SCHEMA_VERSION).toBe("phase1a-v2");
+    expect(SCHEMA_VERSION).toBe("phase1a-v3");
     expect(() => WorldManifestS.parse({})).toThrow();
   });
 });
@@ -61,5 +62,26 @@ describe("log schemas", () => {
     });
     expect(ev.deliberationTriggered).toBe(false);
     expect(ev.energyCharged).toBe(0);
+  });
+});
+
+describe("cognition block (schema v3)", () => {
+  it("manifest requires cognition and rejects unknown modes", () => {
+    const m = makeTestManifest();
+    expect(WorldManifestS.safeParse(m).success).toBe(true);
+    const { cognition: _c, ...noCog } = m as Record<string, unknown> & { cognition: unknown };
+    expect(WorldManifestS.safeParse(noCog).success).toBe(false);
+    expect(CognitionS.safeParse({ decisionMode: "llm", inheritanceMode: "breed", beliefDynamics: "on" }).success).toBe(false);
+  });
+  it("belief source accepts designed", () => {
+    const b = {
+      proposition: "冬季闭户",
+      effect: { target: "w:shelter", modifier: 250, condition: "winter" },
+      confidence: 950,
+      source: "designed",
+      acquiredTick: 0,
+      decayPer100: 0,
+    };
+    expect(BeliefS.safeParse(b).success).toBe(true);
   });
 });

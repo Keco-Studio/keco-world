@@ -5,7 +5,7 @@ import { makeTestManifest, makeTestRoster, makeTestBelief } from "./helpers.js";
 
 describe("genome schemas", () => {
   it("schema version bumped", () => {
-    expect(SCHEMA_VERSION).toBe("phase1a-v2");
+    expect(SCHEMA_VERSION).toBe("phase1a-v3");
   });
   it("belief validates and rejects out-of-range modifiers", () => {
     BeliefS.parse(makeTestBelief());

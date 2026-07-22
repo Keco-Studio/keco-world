@@ -16,7 +16,7 @@ export interface DecideInfo {
   tick: number;
   npcId: string;
   observation: Observation;
-  actionSource: "reflex" | "utility" | "resolver";
+  actionSource: "reflex" | "utility" | "resolver" | "random";
   action: Action;
   /** Scored utility candidates — null for reflex and injected decisions. */
   candidates: ScoredCandidate[] | null;
@@ -25,7 +25,7 @@ export interface DecideInfo {
 
 export interface RunOptions {
   ticks: number;
-  injectedActions?: Map<string, { action: Action; actionSource: "reflex" | "utility" | "resolver" }>;
+  injectedActions?: Map<string, { action: Action; actionSource: "reflex" | "utility" | "resolver" | "random" }>;
   collectTickHashes?: boolean;
   /** Read-only observer of every NPC decision (after decide, before apply). MUST NOT mutate. */
   onDecide?: (info: DecideInfo) => void;
@@ -80,7 +80,7 @@ export function runFromState(
       const observationHash = hashCanonical(obs);
 
       let action: Action;
-      let actionSource: "reflex" | "utility" | "resolver";
+      let actionSource: "reflex" | "utility" | "resolver" | "random";
       let cands: ScoredCandidate[] | null = null;
       let chosenKey: UtilityKey | null = null;
       const injected = opts.injectedActions?.get(`${t}:${npc.npcId}`);

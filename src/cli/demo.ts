@@ -11,6 +11,7 @@ export function makeDemoManifest(): WorldManifest {
   }));
   return {
     schemaVersion: SCHEMA_VERSION,
+    cognition: { decisionMode: "utility", inheritanceMode: "breed", beliefDynamics: "on" },
     gridWidth: 32,
     gridHeight: 32,
     seasonLengthTicks: 400,

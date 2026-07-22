@@ -18,7 +18,7 @@ export function replayRun(
   ticks: number,
   collectTickHashes = false,
 ): RunResult {
-  const injected = new Map<string, { action: Action; actionSource: "reflex" | "utility" | "resolver" }>();
+  const injected = new Map<string, { action: Action; actionSource: "reflex" | "utility" | "resolver" | "random" }>();
   for (const ev of actionLog) {
     injected.set(ev.eventId, { action: ev.action, actionSource: ev.actionSource });
   }

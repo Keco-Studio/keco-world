@@ -43,6 +43,13 @@ export const PATRON_TILT = 150;
 /**
  * Resolver with an explicit tilt weight, so the calibration CLI can sweep candidate tilt
  * values without touching the frozen `PATRON_TILT` const. `resolve` below delegates here.
+ *
+ * Precondition (not enforced): callers should keep `tilt < untiltedTotal` (the sum of
+ * RESOLVER_BASE_WEIGHT+affinity over the band). In practice this always holds — a band has
+ * >= 2 members (single-member bands short-circuit above), so untiltedTotal >= 2*100 = 200,
+ * comfortably above every calibration candidate (<= 150). If it's ever violated, `walk`'s
+ * fallback to the last band member keeps the draw well-defined rather than crashing; the
+ * probabilities just stop matching the intended weight formula for that misuse.
  */
 export function resolveWithTilt(
   candidates: ScoredCandidate[],
@@ -90,41 +97,62 @@ export function resolveWithTilt(
     return { action: untilted.action, key: untilted.key, source: "resolver", patronApplied: false, patronDecisive: false };
   }
 
-  // Coupled draw: the tilted outcome and its untilted counterfactual must derive from the same
-  // underlying entropy so "decisive" only ever pulls TOWARD the patron theme, never away from
-  // it — and this must hold regardless of the theme candidate's position in band (generation)
-  // order, since band order is fixed by candidate kind, not by which key the patron backs.
+  // Coupled, ORDER-INDEPENDENT draw. An earlier version of this function split [0, total)
+  // into "forced zone r < tilt -> theme" then "regular zone -> untilted walk in original band
+  // order" (or the reverse split). Both are order-DEPENDENT: whichever zone abuts the theme's
+  // own slice in the chosen band order silently merges into it, so whenever the theme sits at
+  // that end of band order AND its own untilted weight already exceeds the zone width,
+  // `patronDecisive` is structurally always false there — even though the tilt still moved
+  // real probability mass. (Confirmed empirically: theme first-in-band with w_theme >= tilt
+  // reproduces this exactly.) The fix must not depend on where the theme falls in band order,
+  // since band order is fixed by candidate kind, not by which key the patron backs.
   //
-  // tiltedTotal = untiltedTotal + tilt exactly (only the theme candidate's own weight grows,
-  // by exactly `tilt`). Draw r once against tiltedTotal and split [0, tiltedTotal) into two
-  // zones instead of recomputing per-candidate boundaries twice independently (which, given
-  // drawInt reuses the same underlying raw for any n, would let modular-reduction artifacts
-  // flip the outcome AWAY from the theme for interior band positions — verified empirically):
-  //   - forced zone  r < tilt            → tilted := theme, unconditionally.
-  //   - regular zone r in [tilt, total)  → tilted := walk(untilted weights, r - tilt), which is
-  //     exactly the untilted draw shifted by a constant, so it is IDENTICAL to the untilted
-  //     counterfactual in this zone (never decisive here).
-  // The counterfactual is always the untilted walk: walk(null, r) in the forced zone (using r
-  // as-is — valid since r < tilt, and tilt <= untiltedTotal in practice; the walk's built-in
-  // fallback to the last band member keeps this safe even if not), or the same value used for
-  // tilted in the regular zone. This reproduces exactly the weight = base+affinity+tilt
-  // distribution (theme's total share becomes (w_theme+tilt)/tiltedTotal, everyone else's
-  // share is unchanged at w_other/tiltedTotal) while guaranteeing decisive ⇒ tilted key ===
-  // theme, since the only zone where tilted and counterfactual can differ is the forced zone,
-  // where tilted is definitionally the theme.
+  // Reorder the band, conceptually, as [...non-theme candidates in existing order, theme]
+  // (a relabeling only — it changes which r maps to which candidate, not either lottery's
+  // marginal distribution). Let S = untiltedTotal, total = S + tilt (tilt adds only to the
+  // theme's own weight). Draw once, r = drawInt(seedRoot, S + tilt, "resolver", npcId, tick)
+  // (same key as before). Three zones over the reordered layout:
+  //   - r < S - w_theme        : reordered walk lands on some non-theme candidate — identical
+  //                               computation for tilted and counterfactual. Not decisive.
+  //   - S - w_theme <= r < S   : reordered walk lands on the theme's own (untilted) slice,
+  //                               now positioned last, right before the boundary at S — again
+  //                               identical for tilted/counterfactual. Not decisive.
+  //   - S <= r < S + tilt      : the moved sliver, i.e. exactly the extra mass the tilt added.
+  //     tilted := theme, forced. The counterfactual must answer "what would an untilted draw
+  //     have picked instead", which this r cannot answer (it has no untilted meaning) — so it
+  //     is redrawn independently via r2 = drawInt(seedRoot, S, "resolver-cf", npcId, tick),
+  //     walked against the untilted weights. Decisive iff that redraw's key !== theme.
+  // (In practice the first two zones collapse into a single walk call below — the theme's own
+  // untilted slice sits wherever the reordered array places it, and by construction tilted and
+  // counterfactual are IDENTICAL for any r < S regardless of which candidate that r lands on,
+  // so there is no need to special-case the internal S - w_theme boundary.)
+  //
+  // Correctness: tilted marginal = (w_theme+tilt)/(S+tilt) for theme, w_c/(S+tilt) for every
+  // other candidate c — matches "weight = base+affinity(+tilt if theme)" exactly. Counterfactual
+  // marginal = w_c/S for every c (i.e. exactly the plain untilted lottery): the r<S branch
+  // contributes w_c/(S+tilt) to each c (branch probability S/(S+tilt) times within-branch
+  // probability w_c/S), and the sliver branch's independent redraw contributes
+  // (tilt/(S+tilt))*(w_c/S) to each c; summing gives w_c/S. Decisive probability =
+  // P(r in sliver) * P(redraw != theme) = [tilt/(S+tilt)] * [(S-w_theme)/S] =
+  // tilt*(S-w_theme) / (S*(S+tilt)) — exactly the total-variation distance between the tilted
+  // and untilted lotteries, independent of band order. The extra "resolver-cf" draw only ever
+  // feeds `patronDecisive` (the audit flag); it never touches `action`/`key`, so it cannot
+  // affect world state, determinism, or replay.
   const untiltedTotal = bandTotal(null);
-  const tiltedTotal = untiltedTotal + tilt;
-  const r = drawInt(seedRoot, tiltedTotal, "resolver", npcId, tick);
+  const total = untiltedTotal + tilt;
+  const r = drawInt(seedRoot, total, "resolver", npcId, tick);
 
   let tilted: { action: Action; key: UtilityKey };
   let counter: { action: Action; key: UtilityKey };
-  if (r < tilt) {
+  if (r < untiltedTotal) {
+    const result = walk(null, r); // untilted draw; identical for tilted and counterfactual
+    tilted = result;
+    counter = result;
+  } else {
     const theme = band.find((c) => c.key === patronTheme)!;
     tilted = { action: theme.action, key: theme.key };
-    counter = walk(null, r);
-  } else {
-    tilted = walk(null, r - tilt);
-    counter = tilted;
+    const r2 = drawInt(seedRoot, untiltedTotal, "resolver-cf", npcId, tick);
+    counter = walk(null, r2);
   }
 
   return {

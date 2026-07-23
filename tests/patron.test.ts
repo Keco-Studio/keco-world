@@ -55,4 +55,22 @@ describe("patron mechanism", () => {
     expect(r.actionLog.filter((e) => e.npcId !== "npc-1").every((e) => !e.patronInfluence)).toBe(true);
     expect([150, 100, 60, 30]).toContain(PATRON_TILT);
   });
+  it("patronDecisive is persisted in the action log, audit-traceable, and replayable", () => {
+    const m = makeDemoManifest();
+    const roster = makeDemoRoster("pat-decisive-log");
+    const dirs = new Map([[1, [{ npcId: "npc-1", theme: "explore" as const }]]]);
+    const r = runSim(m, roster, "pat-decisive-log", { ticks: 2000, patronDirectives: dirs });
+    const mine = r.actionLog.filter((e) => e.npcId === "npc-1");
+    // At least one decisive event landed in the persisted log — the UI's decisive mark is
+    // traceable to a saved run, not just a live in-process DecideInfo signal.
+    expect(mine.some((e) => e.patronDecisive)).toBe(true);
+    // decisive ⊆ applied: every decisive event also has patronInfluence true.
+    expect(mine.filter((e) => e.patronDecisive).every((e) => e.patronInfluence)).toBe(true);
+    // Non-directive NPCs never have either flag set.
+    const others = r.actionLog.filter((e) => e.npcId !== "npc-1");
+    expect(others.every((e) => !e.patronInfluence && !e.patronDecisive)).toBe(true);
+    // The regenerated log during replay must byte-match, including the new field.
+    const rep = verifyReplay(m, roster, "pat-decisive-log", r.actionLog, r.checkpoints, 2000, dirs);
+    expect(rep.ok).toBe(true);
+  });
 });

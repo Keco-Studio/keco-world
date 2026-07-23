@@ -33,7 +33,12 @@ export interface RunOptions {
   ticks: number;
   injectedActions?: Map<
     string,
-    { action: Action; actionSource: "reflex" | "utility" | "resolver" | "random"; patronInfluence: boolean }
+    {
+      action: Action;
+      actionSource: "reflex" | "utility" | "resolver" | "random";
+      patronInfluence: boolean;
+      patronDecisive: boolean;
+    }
   >;
   collectTickHashes?: boolean;
   /** Read-only observer of every NPC decision (after decide, before apply). MUST NOT mutate. */
@@ -111,12 +116,15 @@ export function runFromState(
       let actionSource: "reflex" | "utility" | "resolver" | "random";
       let cands: ScoredCandidate[] | null = null;
       let chosenKey: UtilityKey | null = null;
-      let patronApplied = false;
-      let patronDecisive = false;
-      let patronInfluence = false; // value recorded verbatim into the log event
+      let patronApplied = false; // DecideInfo only: true iff THIS live decision used resolver tilt
+      let patronDecisive = false; // DecideInfo only: true iff THIS live decision's tilt was decisive
+      let eventPatronInfluence = false; // recorded verbatim into the log event's patronInfluence
+      let eventPatronDecisive = false; // recorded verbatim into the log event's patronDecisive
       const injected = opts.injectedActions?.get(`${t}:${npc.npcId}`);
       if (injected !== undefined) {
-        ({ action, actionSource, patronInfluence } = injected);
+        ({ action, actionSource } = injected);
+        eventPatronInfluence = injected.patronInfluence;
+        eventPatronDecisive = injected.patronDecisive;
         chosenKey = null;
       } else {
         const effPolicy = applyBeliefs(npc.policy, npc.beliefs, seasonAt(t, manifest));
@@ -143,7 +151,8 @@ export function runFromState(
             chosenKey = resolution.key;
             patronApplied = resolution.patronApplied;
             patronDecisive = resolution.patronDecisive;
-            patronInfluence = resolution.patronApplied;
+            eventPatronInfluence = resolution.patronApplied;
+            eventPatronDecisive = resolution.patronDecisive;
           }
         }
       }
@@ -186,7 +195,8 @@ export function runFromState(
         actionSource,
         deliberationTriggered: false, // P4: fixed in Phase 0 (no deliberative layer)
         energyCharged: 0,
-        patronInfluence,
+        patronInfluence: eventPatronInfluence,
+        patronDecisive: eventPatronDecisive,
         previousEventHash: lastEventHash,
       };
       lastEventHash = hashCanonical(event);

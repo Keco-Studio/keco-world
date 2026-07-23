@@ -25,8 +25,14 @@ export const CanonicalActionEventS = z
     deliberationTriggered: z.boolean(),
     energyCharged: Int.min(0),
     /** Patron mechanism (schema v4): true iff the resolver's band lottery for this
-     * decision was tilted toward a player-set patron theme (Resolution.patronApplied). */
+     * decision was tilted toward a player-set patron theme (Resolution.patronApplied) —
+     * i.e. the theme entered the lottery, regardless of whether it changed the outcome. */
     patronInfluence: z.boolean(),
+    /** Patron mechanism (schema v4): true iff the tilted outcome differs from the exact
+     * total-variation counterfactual draw (Resolution.patronDecisive) — i.e. the tilt
+     * actually decided this pick, not merely participated. decisive ⊆ applied: whenever
+     * this is true, patronInfluence above is also true, but not vice versa. */
+    patronDecisive: z.boolean(),
     previousEventHash: Hash.nullable(),
   })
   .strict();

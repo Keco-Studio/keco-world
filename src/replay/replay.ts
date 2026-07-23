@@ -21,10 +21,20 @@ export function replayRun(
 ): RunResult {
   const injected = new Map<
     string,
-    { action: Action; actionSource: "reflex" | "utility" | "resolver" | "random"; patronInfluence: boolean }
+    {
+      action: Action;
+      actionSource: "reflex" | "utility" | "resolver" | "random";
+      patronInfluence: boolean;
+      patronDecisive: boolean;
+    }
   >();
   for (const ev of actionLog) {
-    injected.set(ev.eventId, { action: ev.action, actionSource: ev.actionSource, patronInfluence: ev.patronInfluence });
+    injected.set(ev.eventId, {
+      action: ev.action,
+      actionSource: ev.actionSource,
+      patronInfluence: ev.patronInfluence,
+      patronDecisive: ev.patronDecisive,
+    });
   }
   return runSim(manifest, roster, seedRoot, { ticks, injectedActions: injected, collectTickHashes, patronDirectives });
 }

@@ -10,7 +10,7 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p web --noEmit",
-    "web": "vite web",
+    "web": "vite web --port 5273 --strictPort",
     "web:build": "vite build web",
     "sim": "tsx src/cli/run.ts",
     "replay": "tsx src/cli/replay.ts",

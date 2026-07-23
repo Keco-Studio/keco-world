@@ -59,11 +59,13 @@ describe("log schemas", () => {
       deliberationTriggered: false,
       energyCharged: 0,
       patronInfluence: false,
+      patronDecisive: false,
       previousEventHash: null,
     });
     expect(ev.deliberationTriggered).toBe(false);
     expect(ev.energyCharged).toBe(0);
     expect(ev.patronInfluence).toBe(false);
+    expect(ev.patronDecisive).toBe(false);
   });
 });
 

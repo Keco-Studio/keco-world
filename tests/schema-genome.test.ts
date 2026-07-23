@@ -28,7 +28,7 @@ describe("genome schemas", () => {
     CanonicalActionEventS.parse({
       eventId: "1:npc-1", tick: 1, npcId: "npc-1", observationHash: "a".repeat(64),
       action: { verb: "idle" }, actionSource: "resolver",
-      deliberationTriggered: false, energyCharged: 0, patronInfluence: false, previousEventHash: null,
+      deliberationTriggered: false, energyCharged: 0, patronInfluence: false, patronDecisive: false, previousEventHash: null,
     });
     SemanticEventS.parse({ tick: 5, kind: "birth", npcId: "child-5-0", data: { generation: 1 } });
     SemanticEventS.parse({ tick: 5, kind: "belief_formed", npcId: "npc-1", data: { target: "w:shelter" } });

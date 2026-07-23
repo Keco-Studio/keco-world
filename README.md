@@ -8,8 +8,8 @@ replay verification with tick-level divergence localization.
 ## Commands
 
 - `npm test` — run the test suite
-- `npm run sim -- --seed <s> --ticks <n>` — run a simulation, write `runs/<s>-<n>/`
-- `npm run replay -- runs/<s>-<n>` — verify the run replays identically
+- `npm run sim -- --seed <s> --ticks <n> [--directives <file>]` — run a simulation, write `runs/<s>-<n>/`; `--directives` reads a `PatronDirectiveFileS`-shaped JSON file of `{tick, npcId, theme}` rows and applies them as patron directives; the run dir always gets a `directives.json` (canonical sorted form, `[]` when none)
+- `npm run replay -- runs/<s>-<n> [--strict]` — verify the run replays identically; loads `directives.json` from the run dir when present (absent is fine — older run dirs stay verifiable); `--strict` additionally runs a full no-injection re-simulation to verify the annotation fields (`actionSource`/`patronInfluence`/`patronDecisive`) themselves, not just that the log replays consistently — see `docs/product-shell.md` §3.4 for the two-verdict model
 - `npm run bench -- --harvest-only` — calibrate deliberation trigger harvesting
 - `npm run bench -- --label official-v1` — run the deliberation benchmark (requires `ollama pull qwen3:0.6b qwen3:1.7b qwen3:4b`; see `docs/bench-prereg-v1.md`)
 - `npm run evolve -- --seed <s> --ticks <n>` — run the generational driver (genome breeding, in-world reproduction, aging), write `runs/evolve-<s>/`; see `docs/evolve-calibration.md`

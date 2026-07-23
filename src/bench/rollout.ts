@@ -22,7 +22,7 @@ export function evaluateBranch(
   horizonTicks: number,
 ): number {
   const injected = new Map([
-    [`${trigger.tick}:${trigger.npcId}`, { action: forcedAction, actionSource: "utility" as const }],
+    [`${trigger.tick}:${trigger.npcId}`, { action: forcedAction, actionSource: "utility" as const, patronInfluence: false }],
   ]);
   const r = runSim(manifest, roster, trigger.seedRoot, {
     ticks: trigger.tick + horizonTicks,

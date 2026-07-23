@@ -1,4 +1,4 @@
-import type { Vec2, WorldManifest, RosterEntry, Identity, Policy, Belief } from "../schema/core.js";
+import type { Vec2, WorldManifest, RosterEntry, Identity, Policy, Belief, UtilityKey } from "../schema/core.js";
 import { drawInt } from "../rng/rng.js";
 import { hashCanonical } from "../canon/canonicalize.js";
 
@@ -37,6 +37,9 @@ export interface WorldState {
   npcs: NpcState[];
   bushes: BushState[];
   wolf: { pos: Vec2 };
+  /** Patron mechanism (schema v4): npcId → the utility key a player is currently
+   * backing for that NPC's resolver hesitation-band lottery. Absent = no patron. */
+  patronThemes: Record<string, UtilityKey>;
 }
 
 export function seasonAt(tick: number, manifest: WorldManifest): "summer" | "winter" {
@@ -105,5 +108,11 @@ export function createInitialState(
     berries: b.capacity,
     capacity: b.capacity,
   }));
-  return { tick: 0, npcs, bushes, wolf: { pos: { x: manifest.wolfStart.x, y: manifest.wolfStart.y } } };
+  return {
+    tick: 0,
+    npcs,
+    bushes,
+    wolf: { pos: { x: manifest.wolfStart.x, y: manifest.wolfStart.y } },
+    patronThemes: {},
+  };
 }

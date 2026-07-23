@@ -1,6 +1,6 @@
 import type { WorldManifest, RosterEntry } from "../schema/core.js";
 import type { Action, CanonicalActionEvent, Checkpoint } from "../schema/log.js";
-import { runSim, type RunResult } from "../sim/engine.js";
+import { runSim, type RunResult, type RunOptions } from "../sim/engine.js";
 import { hashCanonical } from "../canon/canonicalize.js";
 
 export interface ReplayReport {
@@ -17,12 +17,16 @@ export function replayRun(
   actionLog: CanonicalActionEvent[],
   ticks: number,
   collectTickHashes = false,
+  patronDirectives?: RunOptions["patronDirectives"],
 ): RunResult {
-  const injected = new Map<string, { action: Action; actionSource: "reflex" | "utility" | "resolver" | "random" }>();
+  const injected = new Map<
+    string,
+    { action: Action; actionSource: "reflex" | "utility" | "resolver" | "random"; patronInfluence: boolean }
+  >();
   for (const ev of actionLog) {
-    injected.set(ev.eventId, { action: ev.action, actionSource: ev.actionSource });
+    injected.set(ev.eventId, { action: ev.action, actionSource: ev.actionSource, patronInfluence: ev.patronInfluence });
   }
-  return runSim(manifest, roster, seedRoot, { ticks, injectedActions: injected, collectTickHashes });
+  return runSim(manifest, roster, seedRoot, { ticks, injectedActions: injected, collectTickHashes, patronDirectives });
 }
 
 /**
@@ -64,8 +68,9 @@ export function verifyReplay(
   actionLog: CanonicalActionEvent[],
   recordedCheckpoints: Checkpoint[],
   ticks: number,
+  patronDirectives?: RunOptions["patronDirectives"],
 ): ReplayReport {
-  const replayed = replayRun(manifest, roster, seedRoot, actionLog, ticks);
+  const replayed = replayRun(manifest, roster, seedRoot, actionLog, ticks, false, patronDirectives);
 
   // 1. Checkpoint-set completeness + correctness: recordedCheckpoints must match the
   // expected tick sequence exactly (no gaps, no extras, no reordering), and each
@@ -126,8 +131,8 @@ export function verifyReplay(
   // Divergence detected (a checkpoint mismatch/missing/extra, a log completeness
   // violation, or the replay halted before finishing): do per-tick comparison against a
   // live run to find the exact tick of content-level divergence.
-  const liveTicks = runSim(manifest, roster, seedRoot, { ticks, collectTickHashes: true }).tickHashes;
-  const replayTicks = replayRun(manifest, roster, seedRoot, actionLog, ticks, true).tickHashes;
+  const liveTicks = runSim(manifest, roster, seedRoot, { ticks, collectTickHashes: true, patronDirectives }).tickHashes;
+  const replayTicks = replayRun(manifest, roster, seedRoot, actionLog, ticks, true, patronDirectives).tickHashes;
 
   let firstDivergentTick: number | null = null;
   for (let i = 0; i < liveTicks.length; i++) {

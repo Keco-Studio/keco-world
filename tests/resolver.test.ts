@@ -14,7 +14,13 @@ const cands: ScoredCandidate[] = [
 describe("resolver", () => {
   it("epsilon 0 reproduces exact argmax with source utility", () => {
     const r = resolve(cands, identity, 0, "s", "npc-1", 10);
-    expect(r).toEqual({ ...{ action: pickBest(cands).action, key: pickBest(cands).key }, source: "utility" });
+    expect(r).toEqual({
+      action: pickBest(cands).action,
+      key: pickBest(cands).key,
+      source: "utility",
+      patronApplied: false,
+      patronDecisive: false,
+    });
   });
   it("band of one → utility even with large epsilon", () => {
     const solo = [cands[0]!, cands[2]!]; // gap 400 > epsilon 60

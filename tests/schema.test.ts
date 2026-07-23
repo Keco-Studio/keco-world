@@ -32,7 +32,7 @@ describe("core schemas", () => {
     expect(UTILITY_KEYS).toEqual(["forage", "consume", "shelter", "seekMate", "explore", "idle"]);
   });
   it("manifest requires schemaVersion", () => {
-    expect(SCHEMA_VERSION).toBe("phase1a-v3");
+    expect(SCHEMA_VERSION).toBe("phase1a-v4");
     expect(() => WorldManifestS.parse({})).toThrow();
   });
 });
@@ -58,10 +58,12 @@ describe("log schemas", () => {
       actionSource: "utility",
       deliberationTriggered: false,
       energyCharged: 0,
+      patronInfluence: false,
       previousEventHash: null,
     });
     expect(ev.deliberationTriggered).toBe(false);
     expect(ev.energyCharged).toBe(0);
+    expect(ev.patronInfluence).toBe(false);
   });
 });
 

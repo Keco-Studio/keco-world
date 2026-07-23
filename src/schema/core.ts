@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const SCHEMA_VERSION = "phase1a-v3";
+export const SCHEMA_VERSION = "phase1a-v4";
 
 const Int = z.number().int();
 const Milli = Int.min(0).max(1000); // 0..1000 fixed-point "per-mille" scale

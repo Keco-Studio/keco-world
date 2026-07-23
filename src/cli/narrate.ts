@@ -15,5 +15,9 @@ export function narrate(event: SemanticEvent, names: Map<string, string>): strin
       return `[tick ${event.tick}] ${who} was born (gen ${event.data["generation"]}).`;
     case "belief_formed":
       return `[tick ${event.tick}] ${who} learned something (${event.data["target"]}).`;
+    case "patron_set":
+      return event.data["theme"] === null
+        ? `[tick ${event.tick}] the patron stopped backing ${who}.`
+        : `[tick ${event.tick}] a patron started backing ${who} toward ${event.data["theme"]}.`;
   }
 }

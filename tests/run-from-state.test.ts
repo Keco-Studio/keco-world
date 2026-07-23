@@ -8,8 +8,14 @@ import type { DecideInfo } from "../src/sim/engine.js";
 const manifest = makeTestManifest();
 const roster = makeTestRoster(5);
 
-const BASELINE_FINAL_HASH = "921cc3de0ca2e45a8cb2ade50b5507f740670c73e61ea1410f3a61ad0adccce6";
-const BASELINE_CHECKPOINT_PREFIXES = "449e936196b7,7c2a81955fc3,994570870a56,c3a1b55bce55,1b84b77e2fab,00407aade5a3,2b34f85a7984,c16538defa05,eac56cfc9704,921cc3de0ca2";
+// Bumped for schema v4 (Task 2, patron mechanism): WorldState gained `patronThemes`
+// (hashed into every checkpoint/state hash), so every hash below shifted even though this
+// run never sets a patron directive and patronThemes stays `{}` throughout — i.e. the
+// underlying tick-by-tick decisions are unchanged, only the serialized state shape is. This
+// baseline was regenerated from the post-v4 engine and reconfirmed deterministic across
+// repeated runs before being pinned.
+const BASELINE_FINAL_HASH = "1aad11987941f1878a0418ac7b87771f69a7e0aaad06dfac4d5c587be9b87a27";
+const BASELINE_CHECKPOINT_PREFIXES = "794a639d0345,06abbb3a62e8,55029dfe10ee,85fa37586e82,52e6b3de6a1d,228c2a9c19eb,278086dfd963,42229e028866,ef64addb77b4,1aad11987941";
 
 describe("runFromState", () => {
   it("refactor is behavior-neutral: pre-refactor hashes reproduced exactly", () => {

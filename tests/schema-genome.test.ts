@@ -5,7 +5,7 @@ import { makeTestManifest, makeTestRoster, makeTestBelief } from "./helpers.js";
 
 describe("genome schemas", () => {
   it("schema version bumped", () => {
-    expect(SCHEMA_VERSION).toBe("phase1a-v3");
+    expect(SCHEMA_VERSION).toBe("phase1a-v4");
   });
   it("belief validates and rejects out-of-range modifiers", () => {
     BeliefS.parse(makeTestBelief());
@@ -28,7 +28,7 @@ describe("genome schemas", () => {
     CanonicalActionEventS.parse({
       eventId: "1:npc-1", tick: 1, npcId: "npc-1", observationHash: "a".repeat(64),
       action: { verb: "idle" }, actionSource: "resolver",
-      deliberationTriggered: false, energyCharged: 0, previousEventHash: null,
+      deliberationTriggered: false, energyCharged: 0, patronInfluence: false, previousEventHash: null,
     });
     SemanticEventS.parse({ tick: 5, kind: "birth", npcId: "child-5-0", data: { generation: 1 } });
     SemanticEventS.parse({ tick: 5, kind: "belief_formed", npcId: "npc-1", data: { target: "w:shelter" } });

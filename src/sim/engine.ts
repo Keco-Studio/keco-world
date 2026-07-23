@@ -22,16 +22,28 @@ export interface DecideInfo {
   /** Scored utility candidates — null for reflex and injected decisions. */
   candidates: ScoredCandidate[] | null;
   chosenKey: UtilityKey | null;   // the winning candidate's key for utility/resolver decisions; null for reflex/injected
+  /** Patron mechanism (schema v4): true iff a patron theme entered this decision's resolver
+   * band lottery. Always false for reflex/injected/random decisions. */
+  patronApplied: boolean;
+  /** True iff the patron tilt actually changed the outcome vs. the untilted counterfactual. */
+  patronDecisive: boolean;
 }
 
 export interface RunOptions {
   ticks: number;
-  injectedActions?: Map<string, { action: Action; actionSource: "reflex" | "utility" | "resolver" | "random" }>;
+  injectedActions?: Map<
+    string,
+    { action: Action; actionSource: "reflex" | "utility" | "resolver" | "random"; patronInfluence: boolean }
+  >;
   collectTickHashes?: boolean;
   /** Read-only observer of every NPC decision (after decide, before apply). MUST NOT mutate. */
   onDecide?: (info: DecideInfo) => void;
   /** When false, skips actionLog pushes but keeps hash chain computation (default: true). */
   retainActionLog?: boolean;
+  /** Patron mechanism (schema v4): per-tick list of directives (in array order) setting or
+   * clearing (theme: null) the patron theme for an npcId. Applied at tick start, before
+   * environmentStep, and hashed into state via state.patronThemes. */
+  patronDirectives?: Map<number, { npcId: string; theme: UtilityKey | null }[]>;
 }
 
 export interface RunResult {
@@ -71,6 +83,21 @@ export function runFromState(
       events.push({ tick: t, kind: "season_change", npcId: null, data: { season: seasonAt(t, manifest) } });
     }
     state.tick = t;
+
+    // Patron directives (schema v4): apply before environmentStep so state.patronThemes
+    // (hashed into every checkpoint) reflects the directive from this tick onward.
+    const directives = opts.patronDirectives?.get(t);
+    if (directives !== undefined) {
+      for (const d of directives) {
+        if (d.theme === null) {
+          delete state.patronThemes[d.npcId];
+        } else {
+          state.patronThemes[d.npcId] = d.theme;
+        }
+        events.push({ tick: t, kind: "patron_set", npcId: d.npcId, data: { theme: d.theme } });
+      }
+    }
+
     environmentStep(state, manifest, seedRoot, events);
 
     // Decision loop: iterate over snapshot so newborns never act on their birth tick
@@ -84,14 +111,18 @@ export function runFromState(
       let actionSource: "reflex" | "utility" | "resolver" | "random";
       let cands: ScoredCandidate[] | null = null;
       let chosenKey: UtilityKey | null = null;
+      let patronApplied = false;
+      let patronDecisive = false;
+      let patronInfluence = false; // value recorded verbatim into the log event
       const injected = opts.injectedActions?.get(`${t}:${npc.npcId}`);
       if (injected !== undefined) {
-        ({ action, actionSource } = injected);
+        ({ action, actionSource, patronInfluence } = injected);
         chosenKey = null;
       } else {
         const effPolicy = applyBeliefs(npc.policy, npc.beliefs, seasonAt(t, manifest));
         if (manifest.cognition.decisionMode === "random") {
           // Sanity-floor arm: no reflex, no utility — uniform over the candidate list.
+          // Not a hesitation band; patron tilt never applies here.
           cands = scoreCandidates(obs, npc.identity, effPolicy, manifest, seedRoot);
           const idx = drawInt(seedRoot, cands.length, "randarm", npc.npcId, t);
           action = cands[idx]!.action;
@@ -105,10 +136,14 @@ export function runFromState(
             chosenKey = null;
           } else {
             cands = scoreCandidates(obs, npc.identity, effPolicy, manifest, seedRoot);
-            const resolution = resolve(cands, npc.identity, effPolicy.deliberationEpsilon, seedRoot, npc.npcId, t);
+            const patronTheme = state.patronThemes[npc.npcId] ?? null;
+            const resolution = resolve(cands, npc.identity, effPolicy.deliberationEpsilon, seedRoot, npc.npcId, t, patronTheme);
             action = resolution.action;
             actionSource = resolution.source;
             chosenKey = resolution.key;
+            patronApplied = resolution.patronApplied;
+            patronDecisive = resolution.patronDecisive;
+            patronInfluence = resolution.patronApplied;
           }
         }
       }
@@ -121,6 +156,8 @@ export function runFromState(
         action,
         candidates: cands,
         chosenKey,
+        patronApplied,
+        patronDecisive,
       });
 
       const legal = applyAction(state, manifest, npc, action);
@@ -149,6 +186,7 @@ export function runFromState(
         actionSource,
         deliberationTriggered: false, // P4: fixed in Phase 0 (no deliberative layer)
         energyCharged: 0,
+        patronInfluence,
         previousEventHash: lastEventHash,
       };
       lastEventHash = hashCanonical(event);

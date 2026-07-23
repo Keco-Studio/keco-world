@@ -19,6 +19,13 @@ export function riskLine(moment: OpeningMoment, energyDrainPerTick: number): str
   return `冬天还有 ${fmtDays(moment.ticksToWinter)}，他的储备只够 ${reserveDays}`;
 }
 
+/** §4.2 opening-moment register: "当前目标" line, grounded in the director's moment kind. */
+export function goalLine(moment: OpeningMoment): string {
+  return moment.kind === "winter-shortfall"
+    ? "当前目标：赶在寒冬前，把过冬的储备补满"
+    : "当前目标：先找到吃的，撑过眼下这一关";
+}
+
 const VERB_LABELS: Record<UtilityKey, string> = {
   forage: "采集",
   consume: "进食",

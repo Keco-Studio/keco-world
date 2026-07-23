@@ -4,64 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>keco world</title>
-    <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: #14140f;
-        color: #e8e6df;
-        font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-      }
-      #stage {
-        position: relative;
-        width: 960px;
-        max-width: 100%;
-        margin: 0 auto;
-      }
-      canvas#game {
-        display: block;
-        width: 100%;
-        image-rendering: pixelated;
-      }
-      #ui {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        padding: 8px;
-        pointer-events: none;
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 8px;
-      }
-      #ui button {
-        pointer-events: auto;
-        font: inherit;
-        cursor: pointer;
-      }
-      #controls, #camera-toggle {
-        pointer-events: auto;
-        display: flex;
-        gap: 4px;
-        background: rgba(20, 20, 15, 0.7);
-        border-radius: 6px;
-        padding: 6px;
-      }
-      #events {
-        list-style: none;
-        margin: 8px auto;
-        padding: 8px;
-        width: 960px;
-        max-width: 100%;
-        max-height: 160px;
-        overflow-y: auto;
-        background: rgba(20, 20, 15, 0.6);
-        border-radius: 6px;
-        font-size: 13px;
-        line-height: 1.6;
-      }
-    </style>
+    <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="stage">
@@ -77,8 +20,16 @@
           <button data-mode="overview">俯瞰</button>
         </div>
       </div>
+      <div id="flow-overlay"></div>
+    </div>
+    <div id="side-panel">
+      <div id="why-slot"></div>
+      <div id="hooks-panel"></div>
+      <div id="return-hook-panel"></div>
+      <div id="biography-slot"></div>
     </div>
     <ul id="events"></ul>
+    <div id="biography-modal" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

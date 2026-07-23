@@ -9,7 +9,9 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p web --noEmit",
+    "web": "vite web",
+    "web:build": "vite build web",
     "sim": "tsx src/cli/run.ts",
     "replay": "tsx src/cli/replay.ts",
     "bench": "tsx src/cli/bench.ts",
@@ -30,8 +32,10 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
+    "excalibur": "^0.32.0",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2",
+    "vite": "^8.1.5",
     "vitest": "^4.1.10"
   }
 }

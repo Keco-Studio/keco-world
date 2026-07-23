@@ -45,7 +45,43 @@ export function createEngine(): ex.Engine {
 const actorsById = new Map<string, ex.Actor>();
 let winterOverlay: ex.Actor | null = null;
 let followOutline: ex.Actor | null = null;
-let followedLabel: ex.Label | null = null;
+
+// Graphic instance caches. ex.Circle/ex.Rectangle are Raster graphics — each `new` allocates
+// a fresh canvas-backed GPU texture. Allocating them per entity per tick (as a naive syncWorld
+// would) leaks textures until the WebGL context dies (observed live in Task 6 verification:
+// context loss after ~900 ticks at 4×). Graphics are therefore created once per distinct look
+// and shared; graphics.use() is only called when an actor's look actually changes.
+const npcGraphicByLineage = new Map<string, ex.Circle>();
+const bushGraphicByBucket = new Map<string, ex.Circle>();
+let wolfGraphic: ex.Rectangle | null = null;
+const lastLookById = new Map<string, string>();
+
+function useGraphic(actor: ex.Actor, id: string, look: string, make: () => ex.Graphic): void {
+  if (lastLookById.get(id) === look) return;
+  actor.graphics.use(make());
+  lastLookById.set(id, look);
+}
+
+function npcGraphic(lineageId: string): ex.Circle {
+  let g = npcGraphicByLineage.get(lineageId);
+  if (g === undefined) {
+    g = new ex.Circle({ radius: TILE / 2 - 4, color: colorForLineage(lineageId) });
+    npcGraphicByLineage.set(lineageId, g);
+  }
+  return g;
+}
+
+function bushGraphic(bucket: number): ex.Circle {
+  const key = String(bucket);
+  let g = bushGraphicByBucket.get(key);
+  if (g === undefined) {
+    const radius = bucket > 0 ? 3 + bucket : 3;
+    const color = bucket > 0 ? ex.Color.fromHex("#2f9e44") : ex.Color.Gray;
+    g = new ex.Circle({ radius, color });
+    bushGraphicByBucket.set(key, g);
+  }
+  return g;
+}
 
 /** Draws the static parts of the world (shelters, winter overlay) once. Bushes/wolf/NPCs are
  * synced every tick in syncWorld since they move / change. */
@@ -80,8 +116,11 @@ export function initWorld(engine: ex.Engine, manifest: WorldManifest): void {
   followOutline.graphics.isVisible = false;
   engine.add(followOutline);
 
-  followedLabel = new ex.Label({ text: "", pos: ex.Vector.Zero, z: 7, color: ex.Color.White });
-  engine.add(followedLabel);
+  // NOTE deliberately no ex.Label here: Excalibur 0.32's ImageRendererV2 has a shader bug
+  // ("Uniform u_matrix doesn't exist", observed live in Task 6 verification) where rasterized
+  // text images eventually kill the WebGL context; ex.Flags.useLegacyImageRenderer() did not
+  // avert it. The followed NPC's name is shown as a DOM badge instead (see main.ts), keeping
+  // the canvas free of text rasterization entirely.
 }
 
 function ensureActor(engine: ex.Engine, id: string, factory: () => ex.Actor): ex.Actor {
@@ -105,17 +144,19 @@ export function syncWorld(engine: ex.Engine, manifest: WorldManifest, handle: Si
     liveIds.add(bush.id);
     const actor = ensureActor(engine, bush.id, () => new ex.Actor({ pos: ex.Vector.Zero, z: 2 }));
     actor.pos = new ex.Vector(GRID_PIXEL(bush.pos.x), GRID_PIXEL(bush.pos.y));
-    const ratio = bush.capacity > 0 ? bush.berries / bush.capacity : 0;
-    const radius = bush.berries > 0 ? 3 + ratio * 7 : 3;
-    const color = bush.berries > 0 ? ex.Color.fromHex("#2f9e44") : ex.Color.Gray;
-    actor.graphics.use(new ex.Circle({ radius, color }));
+    // Quantized fullness bucket 0..7 → at most 8 shared textures for all bushes.
+    const bucket = bush.berries > 0 && bush.capacity > 0 ? Math.max(1, Math.round((bush.berries / bush.capacity) * 7)) : 0;
+    useGraphic(actor, bush.id, `bush-${bucket}`, () => bushGraphic(bucket));
   }
 
   {
     liveIds.add("wolf");
     const wolf = ensureActor(engine, "wolf", () => new ex.Actor({ pos: ex.Vector.Zero, z: 4 }));
     wolf.pos = new ex.Vector(GRID_PIXEL(state.wolf.pos.x), GRID_PIXEL(state.wolf.pos.y));
-    wolf.graphics.use(new ex.Rectangle({ width: TILE - 6, height: TILE - 6, color: ex.Color.fromHex("#7f1d1d") }));
+    useGraphic(wolf, "wolf", "wolf", () => {
+      if (wolfGraphic === null) wolfGraphic = new ex.Rectangle({ width: TILE - 6, height: TILE - 6, color: ex.Color.fromHex("#7f1d1d") });
+      return wolfGraphic;
+    });
   }
 
   let followedPos: ex.Vector | null = null;
@@ -125,16 +166,12 @@ export function syncWorld(engine: ex.Engine, manifest: WorldManifest, handle: Si
     const actor = ensureActor(engine, npc.npcId, () => new ex.Actor({ pos: ex.Vector.Zero, z: 5 }));
     const pos = new ex.Vector(GRID_PIXEL(npc.pos.x), GRID_PIXEL(npc.pos.y));
     actor.pos = pos;
-    actor.graphics.use(new ex.Circle({ radius: TILE / 2 - 4, color: colorForLineage(npc.lineageId) }));
+    useGraphic(actor, npc.npcId, `npc-${npc.lineageId}`, () => npcGraphic(npc.lineageId));
     if (npc.npcId === followedId) {
       followedPos = pos;
       if (followOutline !== null) {
         followOutline.pos = pos;
         followOutline.graphics.isVisible = true;
-      }
-      if (followedLabel !== null) {
-        followedLabel.pos = new ex.Vector(pos.x, pos.y - TILE);
-        followedLabel.text = npc.name;
       }
     }
   }
@@ -145,7 +182,14 @@ export function syncWorld(engine: ex.Engine, manifest: WorldManifest, handle: Si
     if (!liveIds.has(id)) {
       engine.remove(actor);
       actorsById.delete(id);
+      lastLookById.delete(id);
     }
+  }
+
+  // Followed NPC gone (died): hide the outline instead of leaving it stranded at the
+  // last position.
+  if (followedPos === null && followOutline !== null) {
+    followOutline.graphics.isVisible = false;
   }
 
   const camera = engine.currentScene.camera;

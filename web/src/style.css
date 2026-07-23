@@ -288,3 +288,17 @@ canvas#game {
   background: #2d3b23;
   color: #e8e6df;
 }
+
+#followed-badge {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 24, 16, 0.8);
+  color: #f0ead6;
+  padding: 4px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  pointer-events: none;
+  z-index: 5;
+}

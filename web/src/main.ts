@@ -49,6 +49,15 @@ const engine = createEngine();
 initWorld(engine, manifest);
 void engine.start();
 
+// The followed NPC's name lives in the DOM, not on the canvas — Excalibur 0.32 text
+// rasterization destabilizes the WebGL context (see render.ts note).
+{
+  const badge = document.createElement("div");
+  badge.id = "followed-badge";
+  badge.textContent = `跟随中：${followedFounder.name}`;
+  document.getElementById("stage")?.appendChild(badge);
+}
+
 function names(): Map<string, string> {
   const map = new Map<string, string>();
   for (const npc of sim.state.npcs) map.set(npc.npcId, npc.name);

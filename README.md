@@ -26,17 +26,27 @@ replay verification with tick-level divergence localization.
 - No `Date.now()` / `Math.random()` under `src/`
 - NPCs act in roster order; all tie-breaks are explicit
 
+## Web shell (first five minutes)
+
+`web/` is a Vite + Excalibur browser shell rendering the real deterministic kernel — no server, no LLM, the sim runs client-side off a fixed seed. It implements the §4.2 首个五分钟 journey (opening moment → why-card → patron selection → hooks → biography) as an interaction-gated flow, plus the 守望 (patron) mechanism (schema v4, Resolver band tilt with a shadow-counterfactual audit) and a Moment Director v0 that deterministically picks the default opening event (冬前储备不足 / winter-shortfall).
+
+- `npm run web` — start the dev server (port 5273, see `.claude/launch.json`), fixed seed `"shell-1"`
+- `npx vite build web` — production build check
+
+See `docs/product-shell.md` for the full record: §4.2 beat-by-beat implementation, the patron mechanism's calibrated `PATRON_TILT` and red-line audit (including the counterfactual-coupling correction), the Moment Director decision, the `DAY_TICKS` display convention, visual-verification findings, and what's explicitly out of scope for this shell (deferred to the 1B roadmap in `docs/living-worlds.md`).
+
 ## Design docs
 
 Single-version policy: `docs/living-worlds.md` is the one authoritative spec; historical versions live in git history. One-off records (reviews, decisions, preregistrations) are separate immutable files.
 
-- `docs/living-worlds.md` — the design document (current: v0.5.1)
+- `docs/living-worlds.md` — the design document (current: v0.5.2)
 - `docs/review-v0.4.1.md` — critique of the v0.4.1 draft (historical record)
 - `docs/proposals-v0.5.md` — adopted proposals P1–P5 (historical record)
 - `docs/bench-prereg-v1.md` — preregistered deliberation-gain judgment (frozen protocol)
 - `docs/evolve-calibration.md` — genome-breeding calibration runs (population/births/deaths, observations, known unknowns for §17.1 step 7; includes a 行为漂移初测 behavior-drift paragraph)
 - `docs/degradation-check.md` — 10-generation degradation check official run record (§17.1 step 7): frozen D1–D5 criteria, per-seed time series, idle-share drift trend, findings and implications for the step 9 formal 50-generation runs
 - `docs/baseline-arms.md` — four-arm (Random/Fixed/Handcrafted/Evolutionary) official run record (§17.1 step 3): arm definitions, the 25-archetype Handcrafted content table and 工时记录, per-arm × per-seed results, cross-arm scenario comparison, and findings
+- `docs/product-shell.md` — first-five-minutes product shell record (§17.1 step 8): §4.2 beat-by-beat implementation, patron mechanism calibration + counterfactual-coupling correction, Moment Director decision, `DAY_TICKS` convention, visual-verification findings, 1B backlog
 - `docs/examples/` — real artifacts from an evo-1 run: a lineage biography and a founders-vs-evolved behavior report, for a concrete sense of the CLI output
 - `docs/decisions/` — decision records (DEC-P0 → B0)
 - `docs/bench-results/` — official benchmark reports + audit trails

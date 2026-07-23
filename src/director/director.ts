@@ -32,34 +32,35 @@ export function findOpening(
 
   let bestMoment: OpeningMoment | null = null;
   let bestState: WorldState | null = null;
-  let bestEvents: SemanticEvent[] = [];
+  let bestEventsLen = 0;
 
-  // Chunk scanning: evaluate at each chunk boundary (100, 200, 300, ...)
+  // Single-pass rolling cursor: always advance chunk by chunk
+  let cursorState = structuredClone(initial);
+  let allEvents: SemanticEvent[] = [];
+
   const chunk = 100;
   for (let chunkEnd = chunk; chunkEnd <= scanTicks; chunkEnd += chunk) {
-    // Run from the current best state or from initial
-    const runFrom = bestState ?? initial;
-    const ticksToRun = chunkEnd - runFrom.tick;
+    const ticksToRun = chunkEnd - cursorState.tick;
     if (ticksToRun <= 0) continue;
 
-    const result = runFromState(runFrom, manifest, seedRoot, { ticks: ticksToRun, retainActionLog: false });
-    const currentState = result.finalState;
-    const currentEvents = bestEvents.length > 0 ? bestEvents.concat(result.events) : result.events;
+    const result = runFromState(cursorState, manifest, seedRoot, { ticks: ticksToRun, retainActionLog: false });
+    cursorState = result.finalState;
+    allEvents = allEvents.concat(result.events);
 
     // Evaluate candidates at this chunk boundary
-    for (const npc of currentState.npcs) {
+    for (const npc of cursorState.npcs) {
       if (!npc.alive) continue;
-      if (npcAge(npc, currentState.tick) < manifest.adultAgeTicks) continue;
+      if (npcAge(npc, cursorState.tick) < manifest.adultAgeTicks) continue;
 
-      const season = seasonAt(currentState.tick, manifest);
+      const season = seasonAt(cursorState.tick, manifest);
       if (season !== "summer") continue;
 
       // Calculate ticksToWinter
       // In a summer tick t: p2 = floor(t / seasonLengthTicks), and summer iff p2 % 2 === 0
       // Winter starts at (p2+1)*seasonLengthTicks
       // So ticksToWinter = (p2+1)*seasonLengthTicks - t
-      const p2 = Math.floor(currentState.tick / manifest.seasonLengthTicks);
-      const ticksToWinter = (p2 + 1) * manifest.seasonLengthTicks - currentState.tick;
+      const p2 = Math.floor(cursorState.tick / manifest.seasonLengthTicks);
+      const ticksToWinter = (p2 + 1) * manifest.seasonLengthTicks - cursorState.tick;
 
       if (ticksToWinter <= 0 || ticksToWinter > 200) continue;
 
@@ -72,76 +73,68 @@ export function findOpening(
       // Calculate score
       const score = Math.min(shortfall, 2000) + (200 - ticksToWinter);
 
+      // UTF-16 comparison for tie-breaking (deterministic, not locale-dependent)
+      const npcIdCmp = npc.npcId < bestMoment?.npcId! ? -1 : npc.npcId > bestMoment?.npcId! ? 1 : 0;
+
       // Check if this is better than the current best
       const isBetter =
         bestMoment === null ||
         score > bestMoment.score ||
-        (score === bestMoment.score && currentState.tick < bestMoment.tick) ||
-        (score === bestMoment.score &&
-          currentState.tick === bestMoment.tick &&
-          npc.npcId.localeCompare(bestMoment.npcId) < 0);
+        (score === bestMoment.score && cursorState.tick < bestMoment.tick) ||
+        (score === bestMoment.score && cursorState.tick === bestMoment.tick && npcIdCmp < 0);
 
       if (isBetter) {
         bestMoment = {
           npcId: npc.npcId,
-          tick: currentState.tick,
+          tick: cursorState.tick,
           score,
           ticksToWinter,
           reserves,
           shortfall,
           kind: "winter-shortfall",
         };
-        bestState = structuredClone(currentState);
-        bestEvents = currentEvents.slice(0, currentEvents.length);
+        bestState = structuredClone(cursorState);
+        bestEventsLen = allEvents.length;
       }
     }
   }
 
   // If no winter-shortfall candidate found, fallback to lowest reserves
   if (bestMoment === null) {
-    // Run to scanTicks if not already there
-    const finalResult = bestState ? runFromState(bestState, manifest, seedRoot, { ticks: scanTicks - bestState.tick, retainActionLog: false }) : runFromState(initial, manifest, seedRoot, { ticks: scanTicks, retainActionLog: false });
-    const finalState = finalResult.finalState;
-    const finalEvents = bestState ? bestEvents.concat(finalResult.events) : finalResult.events;
-
     // Find alive adult with lowest reserves
-    const candidates = finalState.npcs.filter((n) => n.alive && npcAge(n, finalState.tick) >= manifest.adultAgeTicks);
+    const candidates = cursorState.npcs.filter((n) => n.alive && npcAge(n, cursorState.tick) >= manifest.adultAgeTicks);
 
     if (candidates.length === 0) {
       throw new Error("No alive NPC at scan end");
     }
 
+    // UTF-16 comparison for tie-breaking (deterministic, not locale-dependent)
     const sorted = candidates.sort((a, b) => {
       const reservesA = a.energy + a.berries * manifest.berryEnergy;
       const reservesB = b.energy + b.berries * manifest.berryEnergy;
       if (reservesA !== reservesB) return reservesA - reservesB;
-      return a.npcId.localeCompare(b.npcId);
+      return a.npcId < b.npcId ? -1 : a.npcId > b.npcId ? 1 : 0;
     });
 
     const focal = sorted[0]!;
     const reserves = focal.energy + focal.berries * manifest.berryEnergy;
-    const season = seasonAt(finalState.tick, manifest);
-    const p2 = Math.floor(finalState.tick / manifest.seasonLengthTicks);
-    const ticksToWinter = season === "summer" ? (p2 + 1) * manifest.seasonLengthTicks - finalState.tick : 0;
+    const p2 = Math.floor(cursorState.tick / manifest.seasonLengthTicks);
+    // Compute ticksToWinter using the same formula regardless of season
+    // For fallback moments in winter, this represents ticks-to-next-boundary (reported as-is per spec)
+    const ticksToWinter = (p2 + 1) * manifest.seasonLengthTicks - cursorState.tick;
     const shortfall = manifest.seasonLengthTicks * manifest.energyDrainPerTick - reserves;
 
     bestMoment = {
       npcId: focal.npcId,
-      tick: finalState.tick,
+      tick: cursorState.tick,
       score: 0, // fallback doesn't use score
       ticksToWinter,
       reserves,
       shortfall,
       kind: "fallback-low-reserves",
     };
-    bestState = finalState;
-    bestEvents = finalEvents;
-  } else {
-    // We found a winter-shortfall candidate, but we need to ensure bestState is at bestMoment.tick
-    // The candidate was found at a chunk boundary, so it should already be correct
-    if (bestState === null || bestState.tick !== bestMoment.tick) {
-      throw new Error("State tick mismatch");
-    }
+    bestState = cursorState;
+    bestEventsLen = allEvents.length;
   }
 
   if (bestState === null) {
@@ -151,6 +144,6 @@ export function findOpening(
   return {
     moment: bestMoment,
     state: bestState,
-    events: bestEvents,
+    events: allEvents.slice(0, bestEventsLen),
   };
 }

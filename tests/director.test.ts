@@ -35,4 +35,14 @@ describe("moment director v0", () => {
       expect(a.moment.kind).toBe("fallback-low-reserves");
     }
   });
+  it("fallback path returns lowest-reserves adult at scan end", () => {
+    const m = makeDemoManifest();
+    // Use scanTicks=100 to ensure no winter-shortfall candidates (ticksToWinter would be ~300 > 200)
+    const a = findOpening(m, makeDemoRoster("dir-fb"), "dir-fb", 100);
+    expect(a.moment.kind).toBe("fallback-low-reserves");
+    expect(a.state.tick).toBe(100);
+    // Verify state matches independent run to tick 100
+    const indep = runSim(m, makeDemoRoster("dir-fb"), "dir-fb", { ticks: 100 });
+    expect(hashCanonical(indep.finalState)).toBe(hashCanonical(a.state));
+  });
 });

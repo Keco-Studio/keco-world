@@ -17,7 +17,8 @@
     "behavior": "tsx src/cli/behavior.ts",
     "biography": "tsx src/cli/biography.ts",
     "degradation": "tsx src/cli/degradation.ts",
-    "arms": "tsx src/cli/arms.ts"
+    "arms": "tsx src/cli/arms.ts",
+    "patron-calibrate": "tsx src/cli/patron-calibrate.ts"
   },
   "keywords": [],
   "author": "",

@@ -129,13 +129,13 @@ function processNewEvents(): void {
   }
 
   // §4.1 标注: a patron-decisive tick gets its own feed line, independent of the SemanticEvent
-  // log (this is DecideInfo audit data, not a world event).
+  // log (this is DecideInfo audit data, not a world event). Feed only — a 标注 records a past
+  // consequence, so it must not displace the forward-looking "接下来值得看" hooks.
   const decision = sim.lastDecisions.get(followedId);
   if (decision !== undefined && decision.patronDecisive && decision.chosenKey !== null) {
     const line = patronMark(decision.chosenKey);
     newLines.push(`[第 ${decision.tick} 拍] ${line}`);
-    flow = flowReduce(flow, { type: "sim-event", line, hookable: true });
-    hooksChanged = true;
+    flow = flowReduce(flow, { type: "sim-event", line, hookable: false });
   }
 
   if (newLines.length > 0) renderEventFeed(newLines);

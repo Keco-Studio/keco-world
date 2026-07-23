@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Vec2S } from "./core.js";
+import { Vec2S, UTILITY_KEYS } from "./core.js";
 
 const Int = z.number().int();
 const Hash = z.string().regex(/^[0-9a-f]{64}$/);
@@ -58,3 +58,11 @@ export type SemanticEvent = z.infer<typeof SemanticEventS>;
 
 export const CheckpointS = z.object({ tick: Int.min(0), stateHash: Hash }).strict();
 export type Checkpoint = z.infer<typeof CheckpointS>;
+
+/** Patron mechanism (schema v4): on-disk directive file format for the CLI — a flat,
+ * sorted list of {tick, npcId, theme} rows, one per directive. `theme: null` clears a
+ * patron theme for that npcId from that tick onward. */
+export const PatronDirectiveFileS = z.array(
+  z.object({ tick: Int.min(0), npcId: z.string(), theme: z.enum(UTILITY_KEYS).nullable() }).strict(),
+);
+export type PatronDirectiveFile = z.infer<typeof PatronDirectiveFileS>;

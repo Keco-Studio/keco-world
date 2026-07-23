@@ -1,5 +1,5 @@
-import type { WorldManifest, RosterEntry } from "../schema/core.js";
-import type { Action, CanonicalActionEvent, Checkpoint } from "../schema/log.js";
+import type { WorldManifest, RosterEntry, UtilityKey } from "../schema/core.js";
+import type { Action, CanonicalActionEvent, Checkpoint, PatronDirectiveFile } from "../schema/log.js";
 import { runSim, type RunResult, type RunOptions } from "../sim/engine.js";
 import { hashCanonical } from "../canon/canonicalize.js";
 
@@ -185,4 +185,106 @@ export function verifyReplay(
     firstDivergentCheckpoint,
     firstDivergentTick,
   };
+}
+
+export interface StrictReport {
+  ok: boolean;
+  eventCountProvided: number;
+  eventCountRegenerated: number;
+  /** index into the provided log of the first event whose hashCanonical differs (null when ok
+   * or when the mismatch is count-only past the shorter log's end) */
+  firstDivergentEventIndex: number | null;
+  /** tick of that event (from whichever log has it) */
+  firstDivergentEventTick: number | null;
+  checkpointsOk: boolean;
+}
+
+/**
+ * Layer-2 verification (doc §3.4): closes the annotation blind spot documented on
+ * `verifyReplay` above. `verifyReplay` re-derives world state by *injecting* the
+ * provided log's actions back into the engine, so it never re-decides anything — a
+ * tamperer who flips `actionSource`/`patronInfluence`/`patronDecisive` on an event and
+ * re-stitches the `previousEventHash` chain from that point produces a log that is fully
+ * self-consistent and replays clean, because those annotation fields are recorded
+ * verbatim from the injected map rather than recomputed. `verifyStrict` instead performs
+ * a full no-injection live re-simulation (`runSim` with no `injectedActions`) from the
+ * same manifest/roster/seed/directives, and compares the provided log against that
+ * ground-truth regenerated log event-by-event via `hashCanonical` — which does cover the
+ * annotation fields — so any tampering with them (or with anything else) shows up as a
+ * hash mismatch even when the hash chain itself was correctly re-stitched.
+ */
+export function verifyStrict(
+  manifest: WorldManifest,
+  roster: RosterEntry[],
+  seedRoot: string,
+  actionLog: CanonicalActionEvent[],
+  recordedCheckpoints: Checkpoint[],
+  ticks: number,
+  patronDirectives?: RunOptions["patronDirectives"],
+): StrictReport {
+  const regenerated = runSim(manifest, roster, seedRoot, { ticks, patronDirectives });
+
+  let firstDivergentEventIndex: number | null = null;
+  let firstDivergentEventTick: number | null = null;
+  const minLen = Math.min(actionLog.length, regenerated.actionLog.length);
+  for (let i = 0; i < minLen; i++) {
+    if (hashCanonical(actionLog[i]) !== hashCanonical(regenerated.actionLog[i])) {
+      firstDivergentEventIndex = i;
+      firstDivergentEventTick = actionLog[i]!.tick;
+      break;
+    }
+  }
+  const lengthsDiffer = actionLog.length !== regenerated.actionLog.length;
+  if (firstDivergentEventIndex === null && lengthsDiffer) {
+    const longer = actionLog.length > regenerated.actionLog.length ? actionLog : regenerated.actionLog;
+    firstDivergentEventTick = longer[minLen]!.tick;
+  }
+
+  const checkpointsOk = hashCanonical(recordedCheckpoints) === hashCanonical(regenerated.checkpoints);
+  const logsMatch = firstDivergentEventIndex === null && !lengthsDiffer;
+
+  return {
+    ok: logsMatch && checkpointsOk,
+    eventCountProvided: actionLog.length,
+    eventCountRegenerated: regenerated.actionLog.length,
+    firstDivergentEventIndex,
+    firstDivergentEventTick,
+    checkpointsOk,
+  };
+}
+
+/** Groups a flat, file-order list of directive rows into the per-tick map `RunOptions`
+ * expects, preserving each tick's row order. */
+export function directivesToMap(file: PatronDirectiveFile): NonNullable<RunOptions["patronDirectives"]> {
+  const map: NonNullable<RunOptions["patronDirectives"]> = new Map();
+  for (const row of file) {
+    const entry = { npcId: row.npcId, theme: row.theme as UtilityKey | null };
+    const existing = map.get(row.tick);
+    if (existing !== undefined) {
+      existing.push(entry);
+    } else {
+      map.set(row.tick, [entry]);
+    }
+  }
+  return map;
+}
+
+/** Flattens the per-tick directive map to file rows sorted by (tick asc, npcId UTF-16
+ * asc) — a plain `<`/`>` compare, not `localeCompare` (project rule: canonical byte
+ * ordering must not depend on locale). `undefined` map -> `[]`. */
+export function directivesToFile(map: RunOptions["patronDirectives"] | undefined): PatronDirectiveFile {
+  if (map === undefined) return [];
+  const rows: PatronDirectiveFile = [];
+  for (const [tick, entries] of map) {
+    for (const entry of entries) {
+      rows.push({ tick, npcId: entry.npcId, theme: entry.theme });
+    }
+  }
+  rows.sort((a, b) => {
+    if (a.tick !== b.tick) return a.tick - b.tick;
+    if (a.npcId < b.npcId) return -1;
+    if (a.npcId > b.npcId) return 1;
+    return 0;
+  });
+  return rows;
 }

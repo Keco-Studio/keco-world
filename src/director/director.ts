@@ -73,8 +73,10 @@ export function findOpening(
       // Calculate score
       const score = Math.min(shortfall, 2000) + (200 - ticksToWinter);
 
-      // UTF-16 comparison for tie-breaking (deterministic, not locale-dependent)
-      const npcIdCmp = npc.npcId < bestMoment?.npcId! ? -1 : npc.npcId > bestMoment?.npcId! ? 1 : 0;
+      // UTF-16 comparison for tie-breaking (deterministic, not locale-dependent);
+      // only consulted when bestMoment !== null (the || below short-circuits first).
+      const bestId = bestMoment === null ? "" : bestMoment.npcId;
+      const npcIdCmp = npc.npcId < bestId ? -1 : npc.npcId > bestId ? 1 : 0;
 
       // Check if this is better than the current best
       const isBetter =

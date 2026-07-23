@@ -118,7 +118,12 @@ function processNewEvents(): void {
 
     // §4.4: followed-NPC death — the cause chain is already in the feed line above (eventLine
     // includes the cause); no punishment framing, just an invitation to read the fuller record.
+    // The world ticks in the background even during onboarding, so death can happen before the
+    // player has chosen a patron theme (before showBiographyButton's normal call in
+    // handleChooseTheme) — force the button into existence here too (idempotent) so the
+    // player can always reach the record.
     if (ev.kind === "death" && ev.npcId === followedId) {
+      showBiographyButton(handleBiographyClick);
       highlightBiographyButton();
     }
   }

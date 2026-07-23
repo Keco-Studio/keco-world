@@ -43,5 +43,12 @@ describe("shell viewmodel", () => {
     expect(eventLine({ tick: 1, kind: "birth", npcId: "npc-1", data: {} }, names)).toContain("Rill");
     expect(eventLine({ tick: 1, kind: "season_change", npcId: null, data: { season: "winter" } }, names)).toContain("冬");
     expect(eventLine({ tick: 1, kind: "patron_set", npcId: "npc-1", data: { theme: "explore" } }, names)).toContain("守望");
+    // death events carry cause on the "cause" field (see src/world/rules.ts: `npc.deathCause = npc.lastDamage ?? "unknown"`,
+    // pushed into SemanticEvent.data.cause) — the Chinese line must translate known cause codes,
+    // matching src/chronicle/biography.ts's DEATH_CAUSE_PHRASE wording, not leak the raw English code.
+    const deathLine = eventLine({ tick: 1, kind: "death", npcId: "npc-1", data: { cause: "wolf" } }, names);
+    expect(deathLine).toContain("Rill");
+    expect(deathLine).toContain("死于狼口");
+    expect(deathLine).not.toContain("wolf");
   });
 });

@@ -13,7 +13,8 @@ export interface FlowState {
   followedId: string;
   /** 接下来值得看 lines, max 3, newest first. */
   hooks: string[];
-  /** Set once when beat reaches "living" and a hook exists. */
+  /** Set unconditionally the moment beat reaches "living" (a theme is chosen) — independent
+   * of whether any hooks have been pushed yet. */
   returnHook: string | null;
 }
 

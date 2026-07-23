@@ -128,13 +128,28 @@ function seasonWord(season: string): string {
   return season === "winter" ? "冬天" : "夏天";
 }
 
+/** Mirrors src/chronicle/biography.ts's DEATH_CAUSE_PHRASE exactly, so the live feed and the
+ * biography read the same way. Unrecognized cause codes fall back to the raw string (unlike
+ * biography.ts's null-cause fallback) — a live feed favors showing the raw signal over a
+ * generic phrase. */
+const DEATH_CAUSE_PHRASE: Record<string, string> = {
+  starvation: "死于饥饿",
+  cold: "死于严寒",
+  wolf: "死于狼口",
+  old_age: "寿终正寝",
+};
+
+function deathPhrase(cause: string): string {
+  return DEATH_CAUSE_PHRASE[cause] ?? cause;
+}
+
 export function eventLine(ev: SemanticEvent, names: Map<string, string>): string | null {
   const who = ev.npcId === null ? "" : (names.get(ev.npcId) ?? ev.npcId);
   switch (ev.kind) {
     case "birth":
       return `${who} 出生了。`;
     case "death":
-      return `${who} 去世了（${String(ev.data["cause"] ?? "未知")}）。`;
+      return `${who} ${deathPhrase(String(ev.data["cause"] ?? "未知"))}。`;
     case "season_change":
       return ev.data["season"] === "winter" ? "寒冬降临。" : `季节转为${seasonWord(String(ev.data["season"]))}。`;
     case "belief_formed":

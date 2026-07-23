@@ -227,8 +227,12 @@ export function showReturnHook(line: string): void {
   root.appendChild(closing);
 }
 
-/** 血脉传记 button, available from beat "living". Created once. */
+/** 血脉传记 button, normally available from beat "living" but also force-created on a
+ * followed-NPC death (§4.4) even mid-onboarding. Idempotent: a second call is a no-op so an
+ * earlier death-triggered button (and its highlight) isn't wiped out by the normal
+ * living-beat creation, and vice versa. */
 export function showBiographyButton(onClick: () => void): void {
+  if (document.getElementById("biography-btn") !== null) return;
   const root = requireEl("biography-slot");
   clear(root);
   const btn = document.createElement("button");

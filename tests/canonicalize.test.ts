@@ -26,4 +26,8 @@ describe("canonicalize", () => {
   it("exports the canon version", () => {
     expect(CANON_VERSION).toBe("int-canon-v1");
   });
+  it("golden hash pins SHA-256 across implementations", () => {
+    // sha256('{"a":1}') — independently verifiable: echo -n '{"a":1}' | shasum -a 256
+    expect(hashCanonical({ a: 1 })).toBe("015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862");
+  });
 });

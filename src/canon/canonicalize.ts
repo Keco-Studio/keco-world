@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 
 export const CANON_VERSION = "int-canon-v1";
 
@@ -30,5 +31,5 @@ export function canonicalize(value: unknown): string {
 }
 
 export function hashCanonical(value: unknown): string {
-  return createHash("sha256").update(canonicalize(value), "utf8").digest("hex");
+  return bytesToHex(sha256(new TextEncoder().encode(canonicalize(value))));
 }

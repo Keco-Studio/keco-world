@@ -157,7 +157,22 @@ function normalCdf(x: number): number {
  * sqrt(n/(n-1)) -- the plain binomial SE times a small-sample factor that -> 1 as
  * n grows, i.e. "approximately" (not exactly) binomial SE, which is what the test
  * pins.
+ *
+ * Throws (rather than returning a number) when the input can't support a real
+ * cluster-robust estimate: fewer than 2 distinct judges (G<2, the G/(G-1) correction
+ * is undefined and there's no between-cluster variation to be robust over), or a
+ * standard error so small it's numerically indistinguishable from float noise (see
+ * DEGENERATE_SE_EPSILON below) -- both would otherwise silently produce a z/pValue
+ * with no real statistical meaning.
  */
+// Below this SE, z blows up to a meaningless magnitude (float noise in sumUj2 divided
+// by an ~0 denominator produces se ~1e-17, z ~1e15) rather than reporting an honest
+// "the data can't support this estimate" -- treated as degenerate and rejected via
+// Error rather than returned as a number a human reader would mistake for real
+// precision. 1e-12 is well below any SE this design's judgment counts (n in the
+// hundreds, pHat bounded away from 0/1 by construction) could legitimately produce.
+const DEGENERATE_SE_EPSILON = 1e-12;
+
 export function clusterRobustPrefSE(judgments: { judgeId: string; choseEvolutionary: boolean }[]): ClusterRobustResult {
   const nTotal = judgments.length;
   if (nTotal === 0) throw new Error("clusterRobustPrefSE: judgments must be non-empty");
@@ -173,21 +188,43 @@ export function clusterRobustPrefSE(judgments: { judgeId: string; choseEvolution
   }
   const G = byJudge.size;
 
+  // G=1 (every judgment came from a single distinct judge): the G/(G-1) small-sample
+  // correction is undefined (division by zero), and there is exactly one cluster, so
+  // there is no between-cluster variation for a "cluster-robust" estimate to be
+  // robust OVER in the first place -- this isn't a numerically-awkward edge case to
+  // paper over with a fallback factor, it's a request the statistic cannot honor.
+  // Fail loudly rather than silently returning a number (see the historical bug this
+  // replaces: the old G>1?G/(G-1):1 fallback let G=1 through with factor 1, which
+  // combined with float noise in sumUj2 to produce se~1e-17 and z~1e15 -- garbage
+  // that still "looked like" a real result to a caller not scrutinizing magnitudes).
+  if (G < 2) {
+    throw new Error(`clusterRobustPrefSE: cluster-robust SE requires >=2 distinct judges; got G=${G}`);
+  }
+
   let sumUj2 = 0;
   for (const xs of byJudge.values()) {
     const uj = xs.reduce((acc, x) => acc + ((x ? 1 : 0) - pHat), 0);
     sumUj2 += uj * uj;
   }
 
-  // G=1 (a single judge contributed every judgment): the G/(G-1) correction is
-  // undefined (division by zero) -- fall back to no small-sample correction (factor
-  // 1) rather than producing NaN/Infinity. This is an edge case the design's "each
-  // judge <=8 judgments, 150-200 total, 25+ judges" target never actually hits.
-  const smallSampleFactor = G > 1 ? G / (G - 1) : 1;
+  const smallSampleFactor = G / (G - 1);
   const variance = (smallSampleFactor * sumUj2) / (nTotal * nTotal);
   const se = Math.sqrt(variance);
 
-  const z = se === 0 ? 0 : (pHat - 0.5) / se;
+  // Genuinely-degenerate SE can still arise with G>=2 -- e.g. every judge's own
+  // residual sum u_j happens to land at (numerically) zero, which needs every judge
+  // internally split in exactly the ratio pHat:1-pHat, an unlikely but not
+  // impossible construction. An exact `se === 0` check is defeated by float noise
+  // (se ends up ~1e-17, not exactly 0), so this is a magnitude threshold, not an
+  // equality check.
+  if (se < DEGENERATE_SE_EPSILON) {
+    throw new Error(
+      `clusterRobustPrefSE: degenerate standard error (se=${se.toExponential(3)}, below ${DEGENERATE_SE_EPSILON}) -- ` +
+        `z/pValue would not be meaningful; this data cannot support a cluster-robust estimate`,
+    );
+  }
+
+  const z = (pHat - 0.5) / se;
   const pValue = 2 * (1 - normalCdf(Math.abs(z)));
 
   return { pHat, se, z, pValue };

@@ -64,6 +64,19 @@ export function parseJudgmentsCsv(csvText: string): Judgment[] {
   return judgments;
 }
 
+/** clusterRobustPrefSE throws on inputs it can't honor (e.g. a single distinct judge
+ * — see src/analysis/stats.ts). That's the right behavior for the stats function
+ * itself (never hand back a garbage z/pValue), but the CLI's job is to report the
+ * primary endpoint even when the recheck can't be computed — the exact binomial test
+ * and Wilson CI don't depend on judge clustering and must still print. So the
+ * recheck's outcome is carried as either a real result or an explanatory error
+ * string, never allowed to abort the whole analysis. */
+export type ClusterRobustOutcome = ClusterRobustResult | { error: string };
+
+export function isClusterRobustError(outcome: ClusterRobustOutcome): outcome is { error: string } {
+  return "error" in outcome;
+}
+
 export interface PrimaryEndpointResult {
   n: number;
   k: number;
@@ -73,7 +86,7 @@ export interface PrimaryEndpointResult {
   passes062: boolean;
   primaryPass: boolean; // significant AND direction positive AND pointEstimate >= 0.62
   wilson: { p: number; lo: number; hi: number };
-  clusterRobust: ClusterRobustResult;
+  clusterRobust: ClusterRobustOutcome;
 }
 
 /**
@@ -83,7 +96,9 @@ export interface PrimaryEndpointResult {
  * computes the primary-endpoint statistics frozen in docs/prereg-1c-draft.md §4: exact
  * two-sided binomial vs 0.5, Wilson 95% CI (reused from src/bench/stats.ts), and the
  * cluster-robust recheck (judge-level clustering, since a judge may contribute up to 8
- * judgments — §4's "聚类稳健标准误复核").
+ * judgments — §4's "聚类稳健标准误复核"). The recheck alone can fail (e.g. a formative
+ * pilot with only one judge) without losing the rest of the primary-endpoint report —
+ * see ClusterRobustOutcome above.
  */
 export function computePrimaryEndpoint(judgments: Judgment[], answerKey: Record<string, "left" | "right">): PrimaryEndpointResult {
   if (judgments.length === 0) throw new Error("computePrimaryEndpoint: judgments must be non-empty");
@@ -104,7 +119,13 @@ export function computePrimaryEndpoint(judgments: Judgment[], answerKey: Record<
   const passes062 = pointEstimate >= PRIMARY_MIN_EFFECT;
   const primaryPass = significant && pointEstimate > 0.5 && passes062;
   const w = wilson(k, n);
-  const clusterRobust = clusterRobustPrefSE(joined);
+
+  let clusterRobust: ClusterRobustOutcome;
+  try {
+    clusterRobust = clusterRobustPrefSE(joined);
+  } catch (err) {
+    clusterRobust = { error: err instanceof Error ? err.message : String(err) };
+  }
 
   return { n, k, pointEstimate, pValueTwoSided, significant, passes062, primaryPass, wilson: w, clusterRobust };
 }
@@ -297,10 +318,14 @@ if (process.argv[1]?.endsWith("analyze.ts") || process.argv[1]?.endsWith("analyz
     console.log(`\nPrimary endpoint: k=${pe.k} n=${pe.n} pointEstimate=${pe.pointEstimate.toFixed(4)} (target >= 0.62)`);
     console.log(`  exact two-sided binomial p=${pe.pValueTwoSided.toFixed(6)} significant(alpha=0.05)=${pe.significant}`);
     console.log(`  Wilson 95% CI: [${pe.wilson.lo.toFixed(4)}, ${pe.wilson.hi.toFixed(4)}]`);
-    console.log(
-      `  cluster-robust recheck: pHat=${pe.clusterRobust.pHat.toFixed(4)} se=${pe.clusterRobust.se.toFixed(4)} ` +
-        `z=${pe.clusterRobust.z.toFixed(4)} p=${pe.clusterRobust.pValue.toFixed(6)}`,
-    );
+    if (isClusterRobustError(pe.clusterRobust)) {
+      console.log(`  cluster-robust recheck: UNAVAILABLE — ${pe.clusterRobust.error}`);
+    } else {
+      console.log(
+        `  cluster-robust recheck: pHat=${pe.clusterRobust.pHat.toFixed(4)} se=${pe.clusterRobust.se.toFixed(4)} ` +
+          `z=${pe.clusterRobust.z.toFixed(4)} p=${pe.clusterRobust.pValue.toFixed(6)}`,
+      );
+    }
   } else {
     console.log(`\nPrimary endpoint: not computed (pass --judgments <csv> to compute it)`);
   }

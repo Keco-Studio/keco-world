@@ -168,6 +168,35 @@ describe("clusterRobustPrefSE", () => {
     // p~0.052; cluster-robust with G/(G-1)=30/29 correction is very slightly wider).
     expect(result.pValue).toBeLessThan(0.1);
   });
+
+  it("G=1 (all judgments from a single distinct judge) throws rather than returning a number", () => {
+    const judgments = Array.from({ length: 10 }, () => ({ judgeId: "only-judge", choseEvolutionary: true }));
+    expect(() => clusterRobustPrefSE(judgments)).toThrow(/>=2 distinct judges/);
+    expect(() => clusterRobustPrefSE(judgments)).toThrow(/G=1/);
+  });
+
+  it("degenerate near-zero SE from float noise throws instead of an exploding z (regression: se===0 exact-equality guard is defeated by float noise)", () => {
+    // 3 judges x 3 judgments each, every judge internally 2-yes/1-no -- each judge's
+    // own average (2/3) matches the pooled pHat (6/9 = 2/3) EXACTLY, so the true
+    // cluster-robust variance is 0. In floating point this doesn't come out to
+    // literal 0 (unlike the simpler 1-yes/1-no-per-judge case, which does): computed
+    // independently, sumUj2 here lands at ~3.7e-32 and se at ~2.6e-17 -- nonzero, but
+    // certainly not a real standard error. The old `se === 0 ? 0 : ...` guard let
+    // this straight through to a real (garbage) z; the new epsilon guard (1e-12)
+    // must catch it.
+    const judgments = [
+      { judgeId: "j0", choseEvolutionary: true },
+      { judgeId: "j0", choseEvolutionary: true },
+      { judgeId: "j0", choseEvolutionary: false },
+      { judgeId: "j1", choseEvolutionary: true },
+      { judgeId: "j1", choseEvolutionary: true },
+      { judgeId: "j1", choseEvolutionary: false },
+      { judgeId: "j2", choseEvolutionary: true },
+      { judgeId: "j2", choseEvolutionary: true },
+      { judgeId: "j2", choseEvolutionary: false },
+    ];
+    expect(() => clusterRobustPrefSE(judgments)).toThrow(/degenerate standard error/);
+  });
 });
 
 describe("cohenKappa", () => {

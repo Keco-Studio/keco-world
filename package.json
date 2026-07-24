@@ -20,6 +20,7 @@
     "biography": "tsx src/cli/biography.ts",
     "degradation": "tsx src/cli/degradation.ts",
     "arms": "tsx src/cli/arms.ts",
+    "formal": "tsx src/cli/formal.ts",
     "patron-calibrate": "tsx src/cli/patron-calibrate.ts"
   },
   "keywords": [],

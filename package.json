@@ -21,6 +21,7 @@
     "degradation": "tsx src/cli/degradation.ts",
     "arms": "tsx src/cli/arms.ts",
     "formal": "tsx src/cli/formal.ts",
+    "evalpack": "tsx src/cli/evalpack.ts",
     "patron-calibrate": "tsx src/cli/patron-calibrate.ts"
   },
   "keywords": [],

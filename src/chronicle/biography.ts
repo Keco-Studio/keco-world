@@ -1,6 +1,7 @@
 import type { WorldManifest } from "../schema/core.js";
 import { seasonAt } from "../world/state.js";
 import type { LineageChronicle, LineageMember } from "./extract.js";
+import type { SampledEvent } from "./sample.js";
 
 const MAX_EVENT_SENTENCES = 12;
 const MAX_BELIEF_SENTENCES = 5;
@@ -54,8 +55,14 @@ interface RawLine {
  * Template-only markdown biography. Every sentence traces to a LineageChronicle
  * field (grounding); no seed strings, parameter values, tick integers, or raw
  * lineage/arm ids ever appear — only in-world names, season-year notation and events.
+ *
+ * `selection` (optional): when given (typically the output of `stratifiedSelect`),
+ * the rendered member-event and belief sentences are EXACTLY the selected events —
+ * same sentence templates, same section structure, chronological order within
+ * sections — instead of the v1 earliest-N cap below. Omitted, the output is
+ * byte-identical to v1 (this branch is untouched by the selection feature).
  */
-export function renderBiography(c: LineageChronicle, manifest: WorldManifest): string {
+export function renderBiography(c: LineageChronicle, manifest: WorldManifest, selection?: SampledEvent[]): string {
   const nameOf = new Map(c.members.map((m) => [m.npcId, m.name] as const));
   const genOf = new Map(c.members.map((m) => [m.npcId, m.generation] as const));
   const parentName = (id: string): string => nameOf.get(id) ?? "族外的伴侣";
@@ -71,9 +78,7 @@ export function renderBiography(c: LineageChronicle, manifest: WorldManifest): s
   const eventOrder = (a: RawLine, b: RawLine): number =>
     a.tick !== b.tick ? a.tick - b.tick : compareIds(a.npcId, b.npcId);
 
-  const selectedEvents = [...births, ...deaths].sort(eventOrder).slice(0, MAX_EVENT_SENTENCES);
-
-  const selectedBeliefs: RawLine[] = c.beliefsFormed.slice(0, MAX_BELIEF_SENTENCES).map((b) => ({
+  const allBeliefs: RawLine[] = c.beliefsFormed.map((b) => ({
     tick: b.tick,
     npcId: b.npcId,
     name: b.name,
@@ -81,6 +86,18 @@ export function renderBiography(c: LineageChronicle, manifest: WorldManifest): s
     kind: "belief",
     proposition: b.proposition,
   }));
+
+  let selectedEvents: RawLine[];
+  let selectedBeliefs: RawLine[];
+  if (selection !== undefined) {
+    const key = (kind: LineKind, npcId: string, tick: number): string => `${kind}|${npcId}|${tick}`;
+    const wanted = new Set(selection.map((s) => key(s.kind, s.npcId, s.tick)));
+    selectedEvents = [...births, ...deaths].filter((e) => wanted.has(key(e.kind, e.npcId, e.tick))).sort(eventOrder);
+    selectedBeliefs = allBeliefs.filter((b) => wanted.has(key(b.kind, b.npcId, b.tick))).sort(eventOrder);
+  } else {
+    selectedEvents = [...births, ...deaths].sort(eventOrder).slice(0, MAX_EVENT_SENTENCES);
+    selectedBeliefs = allBeliefs.slice(0, MAX_BELIEF_SENTENCES);
+  }
 
   const generations = new Set<number>();
   for (const e of selectedEvents) generations.add(e.generation);

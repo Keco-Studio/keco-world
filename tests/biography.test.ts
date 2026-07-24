@@ -142,3 +142,55 @@ describe("selection-mode belief template (blinding: uniform, no timestamp)", () 
     expect(md).not.toContain("designed-prop"); // designed beliefs are v2/selection-only
   });
 });
+
+// 3rd de-blind fix (docs/prereg-1c-draft.md §4, "终审发现，2026-07-24"): the closing
+// (结语) itself was a ~100% arm classifier -- Handcrafted (clone-inheritance) always
+// has empty weightDrift, so its old closing was ALWAYS "…并无显著改变"; Evolutionary
+// (breed, 50+ gens) reliably clears DRIFT_THRESHOLD somewhere, so its old closing was
+// ALWAYS the "…演变…更热衷于/更疏于…" phrasing. The v2/selection path now renders a
+// neutral, extinction-status-only closing with no drift semantics whatsoever.
+describe("selection-mode closing (blinding: neutral, no drift semantics)", () => {
+  const manifest = makeTestManifest();
+
+  const survivingWithDrift: LineageChronicle = {
+    lineageId: "f2",
+    founderName: "Founder2",
+    members: [{ npcId: "f2", name: "Founder2", generation: 0, birthTick: 0, parents: null, deathTick: null, deathCause: null }],
+    beliefsFormed: [],
+    designedBeliefs: [],
+    // Large drift -- would have triggered the old "演变...更热衷于" closing.
+    weightDrift: [{ key: "forage", founder: 200, latest: 700 }],
+    extinct: false,
+    peakGeneration: 0,
+  };
+
+  const extinctNoDrift: LineageChronicle = {
+    lineageId: "f3",
+    founderName: "Founder3",
+    members: [{ npcId: "f3", name: "Founder3", generation: 0, birthTick: 0, parents: null, deathTick: 5, deathCause: "old_age" }],
+    beliefsFormed: [],
+    designedBeliefs: [],
+    weightDrift: [], // extractLineage always yields [] for extinct lineages
+    extinct: true,
+    peakGeneration: 0,
+  };
+
+  it("surviving + drifted chronicle gets the neutral '仍在继续' closing, never drift phrasing", () => {
+    const md = renderBiography(survivingWithDrift, manifest, []);
+    expect(md).toContain("这一脉的故事仍在继续。");
+    expect(md).not.toMatch(/演变|更热衷|更疏于|并无显著改变/);
+  });
+
+  it("extinct chronicle gets the neutral '落幕' closing in selection mode", () => {
+    const md = renderBiography(extinctNoDrift, manifest, []);
+    expect(md).toContain("这一脉的故事至此落幕。");
+    expect(md).not.toMatch(/演变|更热衷|更疏于|并无显著改变/);
+  });
+
+  it("v1 path is unaffected -- the same drifted chronicle still gets the rich drift closing", () => {
+    const md = renderBiography(survivingWithDrift, manifest); // no selection arg
+    expect(md).toContain("演变");
+    expect(md).toContain("更热衷于采集");
+    expect(md).not.toContain("这一脉的故事仍在继续");
+  });
+});

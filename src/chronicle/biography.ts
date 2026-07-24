@@ -86,6 +86,17 @@ interface RawLine {
  * is a product-facing/demo renderer, not judge-packet material, so it deliberately
  * keeps the richer rendering (designed beliefs never even reach it) — blinding
  * constraints bind the eval instrument, not the product.
+ *
+ * BLINDING SCOPING (3rd de-blind fix, same precedent, stronger leak): whole-branch
+ * final review found the 结语 (closing) itself was a ~100% arm classifier —
+ * Handcrafted is clone-inheritance, so `weightDrift` is always empty (no
+ * drift-eligible living descendant with a different genome), so its closing was
+ * ALWAYS "…并无显著改变"; Evolutionary is breed-inheritance over 50+ generations, so
+ * `weightDrift` reliably clears DRIFT_THRESHOLD somewhere, so its closing was ALWAYS
+ * the "…演变…更热衷于/更疏于…" phrasing. The v2/selection path now renders a neutral,
+ * extinction-status-only closing (see below) with no drift semantics at all. The v1
+ * (no-selection) path keeps the rich drift-based closing — again, product-facing,
+ * not judge-packet material, same scoping rationale as the belief-template fix above.
  */
 export function renderBiography(c: LineageChronicle, manifest: WorldManifest, selection?: SampledEvent[]): string {
   const nameOf = new Map(c.members.map((m) => [m.npcId, m.name] as const));
@@ -211,7 +222,12 @@ export function renderBiography(c: LineageChronicle, manifest: WorldManifest, se
       : `${c.founderName}是这一脉的始祖，未留下子嗣。${lifeStatus}`;
 
   let closing: string;
-  if (c.extinct) {
+  if (selection !== undefined) {
+    // v2/selection path: neutral, symmetric two-state closing keyed ONLY on
+    // extinction status — no drift semantics (see this function's 3rd BLINDING
+    // SCOPING doc comment above for why the drift-based closing had to go here).
+    closing = c.extinct ? "这一脉的故事至此落幕。" : "这一脉的故事仍在继续。";
+  } else if (c.extinct) {
     closing = `${c.founderName}的这一脉最终在世间断绝，未留下存续的血脉。`;
   } else {
     const drifted = c.weightDrift.filter((d) => Math.abs(d.latest - d.founder) >= DRIFT_THRESHOLD);

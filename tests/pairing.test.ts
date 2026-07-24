@@ -168,6 +168,10 @@ describe("blindingViolations", () => {
     "锦标赛",
     "LoRA",
     "世界进化",
+    "演变",
+    "并无显著改变",
+    "更热衷",
+    "更疏于",
   ];
 
   it("catches each forbidden string", () => {

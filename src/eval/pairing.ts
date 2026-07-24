@@ -129,7 +129,16 @@ export function buildPairs(evo: BioCandidate[], hand: BioCandidate[], seedRoot: 
 /** Frozen blinding-violation grep list (docs/prereg-1c-draft.md §4, "盲化核查表").
  * Latin/ASCII terms match case-insensitively; non-ASCII (CJK) terms match exactly
  * (case has no meaning for them). Extra terms — e.g. the run's own seedRoots — can
- * be passed in and are checked the same way. */
+ * be passed in and are checked the same way.
+ *
+ * "演变"/"并无显著改变"/"更热衷"/"更疏于" (3rd de-blind fix, defense-in-depth): the
+ * old drift-based 结语 template used exactly these phrases, and — since Handcrafted
+ * (clone-inheritance) always has empty weightDrift while Evolutionary (breed,
+ * 50+ generations) reliably clears the drift threshold — they functioned as a
+ * near-perfect arm classifier. `renderBiography`'s v2/selection path no longer emits
+ * them (replaced with a neutral extinction-only closing), but they're listed here
+ * too so any future rendering regression is still caught by the grep gate, not just
+ * by the renderer's own logic. */
 const FORBIDDEN_TERMS: readonly string[] = [
   "tick",
   "拍",
@@ -144,6 +153,10 @@ const FORBIDDEN_TERMS: readonly string[] = [
   "锦标赛",
   "LoRA",
   "世界进化",
+  "演变",
+  "并无显著改变",
+  "更热衷",
+  "更疏于",
 ];
 
 function isAsciiOnly(s: string): boolean {

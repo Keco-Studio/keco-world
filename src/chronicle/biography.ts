@@ -2,6 +2,7 @@ import type { WorldManifest } from "../schema/core.js";
 import { seasonAt } from "../world/state.js";
 import type { LineageChronicle, LineageMember } from "./extract.js";
 import type { SampledEvent } from "./sample.js";
+import { designedBeliefTick } from "./sample.js";
 
 const MAX_EVENT_SENTENCES = 12;
 const MAX_BELIEF_SENTENCES = 5;
@@ -49,6 +50,11 @@ interface RawLine {
   parents?: [string, string];
   cause?: string | null;
   proposition?: string;
+  /** belief lines only: true for the founder's roster-designed beliefs (no real
+   * formation tick — `tick` here is a synthetic sentinel from designedBeliefTick),
+   * false/absent for beliefs formed in play via belief_formed events. Selects which
+   * of the two belief sentence templates renderLine uses. */
+  designed?: boolean;
 }
 
 /**
@@ -59,8 +65,15 @@ interface RawLine {
  * `selection` (optional): when given (typically the output of `stratifiedSelect`),
  * the rendered member-event and belief sentences are EXACTLY the selected events —
  * same sentence templates, same section structure, chronological order within
- * sections — instead of the v1 earliest-N cap below. Omitted, the output is
- * byte-identical to v1 (this branch is untouched by the selection feature).
+ * sections — instead of the v1 earliest-N cap below. Omitted, the output uses the
+ * same v1 selection logic as before (this branch is untouched by the selection
+ * feature) — EXCEPT the belief sentence template, which changed for both paths (see
+ * renderLine's belief branch): formed beliefs now read "{name}信奉：『…』，时在<season-year>。"
+ * instead of the old "<season-year>，{name}学会了：『…』" — a deliberate, v1-visible
+ * change (docs/prereg-1c-draft.md follow-up: de-blind belief-sentence leak). Only the
+ * v2/selection path additionally surfaces the founder's designed beliefs (rendered
+ * once, in the founder's own section, via the second "生来信奉" template) — v1 never
+ * did and still doesn't.
  */
 export function renderBiography(c: LineageChronicle, manifest: WorldManifest, selection?: SampledEvent[]): string {
   const nameOf = new Map(c.members.map((m) => [m.npcId, m.name] as const));
@@ -78,13 +91,29 @@ export function renderBiography(c: LineageChronicle, manifest: WorldManifest, se
   const eventOrder = (a: RawLine, b: RawLine): number =>
     a.tick !== b.tick ? a.tick - b.tick : compareIds(a.npcId, b.npcId);
 
-  const allBeliefs: RawLine[] = c.beliefsFormed.map((b) => ({
+  const formedBeliefLines: RawLine[] = c.beliefsFormed.map((b) => ({
     tick: b.tick,
     npcId: b.npcId,
     name: b.name,
     generation: genOf.get(b.npcId) ?? 0,
     kind: "belief",
     proposition: b.proposition,
+    designed: false,
+  }));
+
+  // Founder's designed beliefs (v2/selection path only — see LineageChronicle's
+  // designedBeliefs doc comment for why this never surfaces for descendants, and
+  // sample.ts's designedBeliefTick doc comment for the synthetic-tick scheme this
+  // reconstructs to match a stratifiedSelect selection back to its proposition text).
+  const founderName = nameOf.get(c.lineageId) ?? c.founderName;
+  const designedBeliefLines: RawLine[] = c.designedBeliefs.map((b, i) => ({
+    tick: designedBeliefTick(i, c.designedBeliefs.length),
+    npcId: c.lineageId,
+    name: founderName,
+    generation: 0,
+    kind: "belief",
+    proposition: b.proposition,
+    designed: true,
   }));
 
   let selectedEvents: RawLine[];
@@ -92,11 +121,14 @@ export function renderBiography(c: LineageChronicle, manifest: WorldManifest, se
   if (selection !== undefined) {
     const key = (kind: LineKind, npcId: string, tick: number): string => `${kind}|${npcId}|${tick}`;
     const wanted = new Set(selection.map((s) => key(s.kind, s.npcId, s.tick)));
+    const allBeliefLines = [...formedBeliefLines, ...designedBeliefLines];
     selectedEvents = [...births, ...deaths].filter((e) => wanted.has(key(e.kind, e.npcId, e.tick))).sort(eventOrder);
-    selectedBeliefs = allBeliefs.filter((b) => wanted.has(key(b.kind, b.npcId, b.tick))).sort(eventOrder);
+    selectedBeliefs = allBeliefLines.filter((b) => wanted.has(key(b.kind, b.npcId, b.tick))).sort(eventOrder);
   } else {
+    // v1 path: unchanged selection logic (earliest-N cap, formed beliefs only —
+    // designed beliefs are a v2/selection-only feature, see module doc above).
     selectedEvents = [...births, ...deaths].sort(eventOrder).slice(0, MAX_EVENT_SENTENCES);
-    selectedBeliefs = allBeliefs.slice(0, MAX_BELIEF_SENTENCES);
+    selectedBeliefs = formedBeliefLines.slice(0, MAX_BELIEF_SENTENCES);
   }
 
   const generations = new Set<number>();
@@ -141,7 +173,14 @@ export function renderBiography(c: LineageChronicle, manifest: WorldManifest, se
     if (line.kind === "death") {
       return `${subject}${deathPhrase(line.cause ?? null)}，时在${seasonYear(line.tick, manifest)}。`;
     }
-    return `${seasonYear(line.tick, manifest)}，${subject}学会了：『${line.proposition}』`;
+    // belief: two templates, symmetric in register. Beliefs formed in play carry a
+    // real tick, so — like the death template above — they close on "，时在<season-year>。".
+    // Designed beliefs (founder-only, no formation tick) render in the founder's own
+    // intro context instead: "生来信奉" ("born believing"), no season-year clause.
+    if (line.designed === true) {
+      return `${subject}生来信奉：『${line.proposition}』。`;
+    }
+    return `${subject}信奉：『${line.proposition}』，时在${seasonYear(line.tick, manifest)}。`;
   }
 
   const genLabel = (g: number): string => (g === 0 ? "始祖" : `第${g}代`);

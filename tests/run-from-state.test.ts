@@ -8,14 +8,17 @@ import type { DecideInfo } from "../src/sim/engine.js";
 const manifest = makeTestManifest();
 const roster = makeTestRoster(5);
 
-// Bumped for schema v4 (Task 2, patron mechanism): WorldState gained `patronThemes`
-// (hashed into every checkpoint/state hash), so every hash below shifted even though this
-// run never sets a patron directive and patronThemes stays `{}` throughout — i.e. the
-// underlying tick-by-tick decisions are unchanged, only the serialized state shape is. This
-// baseline was regenerated from the post-v4 engine and reconfirmed deterministic across
-// repeated runs before being pinned.
-const BASELINE_FINAL_HASH = "1aad11987941f1878a0418ac7b87771f69a7e0aaad06dfac4d5c587be9b87a27";
-const BASELINE_CHECKPOINT_PREFIXES = "794a639d0345,06abbb3a62e8,55029dfe10ee,85fa37586e82,52e6b3de6a1d,228c2a9c19eb,278086dfd963,42229e028866,ef64addb77b4,1aad11987941";
+// Bumped again (de-blind belief-sentence leak fix, docs/prereg-1c-draft.md follow-up):
+// the 3 formation-rule propositions in src/mind/beliefs.ts moved from fixed English
+// strings to a deterministic Chinese variant pick (fnv1a32(`${npcId}:${tick}`) mod
+// pool size). `Belief.proposition` is part of NpcState and so part of every
+// checkpoint/final-state hash — this run's tick-by-tick decisions are byte-identical
+// (the first 3 checkpoints below, all before this run's first belief-forming event,
+// are unchanged from the prior baseline), only the belief text embedded in state
+// diverges from the point beliefs start forming onward. Regenerated from the
+// post-fix engine and reconfirmed deterministic across repeated runs before pinning.
+const BASELINE_FINAL_HASH = "e36bfb82c35322f33b42c35ee29f126dc04df43d63d52d23b3a104d38f5c2730";
+const BASELINE_CHECKPOINT_PREFIXES = "794a639d0345,06abbb3a62e8,55029dfe10ee,929e272aa33e,fb74fc25bceb,849ad0d5bc4d,17e05fe5a5c9,3deedab465ac,4d128ce63ea1,e36bfb82c353";
 
 describe("runFromState", () => {
   it("refactor is behavior-neutral: pre-refactor hashes reproduced exactly", () => {

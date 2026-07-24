@@ -1,10 +1,32 @@
 import type { Policy, Belief, UtilityKey } from "../schema/core.js";
 import type { NpcState, WorldState } from "../world/state.js";
 import type { SemanticEvent } from "../schema/log.js";
+import { fnv1a32 } from "../rng/rng.js";
 
 export const BELIEF_CAP = 16;
 export const BELIEF_FLOOR = 100;
 export const REINFORCE_STEP = 150;
+
+/** Formation-rule proposition pools (blinding fix: the three formation rules used to
+ * emit one fixed English sentence apiece — a lexical arm tell, since these are the
+ * ONLY propositions an Evolutionary-arm biography ever contains). Each rule now has
+ * 3 Chinese variants (register matches the designed archetypes in src/arms/arms.ts,
+ * each ≤20 chars). */
+export const WOLF_PROPOSITIONS = ["狼口即死，墙内即生", "见狼要跑，有墙要躲", "狼是死神，屋是命"] as const;
+export const HUNGER_PROPOSITIONS = ["饥饿转瞬即至，趁早采摘", "错过时机，腹中空空", "能摘就摘，莫要迟疑"] as const;
+export const WINTER_PROPOSITIONS = ["那个寒冬，几乎要了我的命", "严冬几乎夺走我的命", "寒冬近乎致命，我记得"] as const;
+
+/**
+ * Deterministic per-(npcId, tick) variant pick. `beliefFormationStep` only receives
+ * `WorldState` + event arrays — no seedRoot is in scope here (unlike drawInt call
+ * sites elsewhere) — so this substitutes an fnv1a32 hash of "npcId:tick" mod the
+ * pool size. Same modulo-bias caveat as drawInt (src/rng/rng.ts): acceptable at a
+ * pool size of 3.
+ */
+function pickVariant(pool: readonly string[], npcId: string, tick: number): string {
+  const idx = fnv1a32(`${npcId}:${tick}`) % pool.length;
+  return pool[idx]!;
+}
 
 /** Confidence-scaled, season-gated belief deltas applied to a copy of policy. Never mutates inputs. */
 export function applyBeliefs(policy: Policy, beliefs: Belief[], season: "summer" | "winter"): Policy {
@@ -65,7 +87,7 @@ export function beliefFormationStep(state: WorldState, events: SemanticEvent[], 
       const npc = state.npcs.find((n) => n.npcId === event.npcId);
       if (npc && npc.alive) {
         const belief: Belief = {
-          proposition: "the wolf is death; walls are life",
+          proposition: pickVariant(WOLF_PROPOSITIONS, npc.npcId, state.tick),
           effect: { target: "w:shelter", modifier: 80, condition: null },
           confidence: 600,
           source: "observed",
@@ -79,7 +101,7 @@ export function beliefFormationStep(state: WorldState, events: SemanticEvent[], 
       const npc = state.npcs.find((n) => n.npcId === event.npcId);
       if (npc && npc.alive && npc.hp < 500) {
         const belief: Belief = {
-          proposition: "hunger comes fast; gather while you can",
+          proposition: pickVariant(HUNGER_PROPOSITIONS, npc.npcId, state.tick),
           effect: { target: "w:forage", modifier: 100, condition: null },
           confidence: 600,
           source: "observed",
@@ -95,7 +117,7 @@ export function beliefFormationStep(state: WorldState, events: SemanticEvent[], 
         for (const npc of state.npcs) {
           if (npc.alive && npc.hp < 500) {
             const belief: Belief = {
-              proposition: "winter nearly killed me",
+              proposition: pickVariant(WINTER_PROPOSITIONS, npc.npcId, state.tick),
               effect: { target: "w:shelter", modifier: 60, condition: "winter" },
               confidence: 500,
               source: "observed",

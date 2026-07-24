@@ -183,7 +183,7 @@ describe("blindingViolations", () => {
   });
 
   it("passes a clean biography", () => {
-    const clean = "Garen是这一脉的始祖，其血脉历经5代的繁衍。第2年夏，Garen学会了：『the wolf is death』";
+    const clean = "Garen是这一脉的始祖，其血脉历经5代的繁衍。第2年夏，Garen信奉：『狼口即死，墙内即生』，时在第2年夏。";
     expect(blindingViolations(clean)).toEqual([]);
   });
 

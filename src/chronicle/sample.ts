@@ -15,6 +15,23 @@ const DEFAULT_BANDS = 4;
 // Priority within a band, lower sorts first: death (with cause) > belief_formed > birth.
 const PRIORITY: Record<SampledEvent["kind"], number> = { death: 0, belief: 1, birth: 2 };
 
+/**
+ * Synthetic tick assigned to a founder's `designedBeliefs[index]` entry so it can be
+ * carried through `SampledEvent` (which only has {kind, tick, npcId}, no proposition
+ * text) and matched back up in `renderBiography`. Designed beliefs have no real
+ * formation tick — they're the founder's roster-designed aphorisms (docs
+ * prereg §4 follow-up: "de-blind belief-sentence leak"), present at founding, not
+ * formed at some moment in play. Always negative (real ticks are >= 0 per
+ * SemanticEventS), so it can never collide with a real event; index order is
+ * preserved (index 0 gets the most negative tick) so declaration order in the
+ * roster is what determines relative order among a founder's own designed beliefs.
+ * Exported so biography.ts can reconstruct the identical mapping when resolving a
+ * selection back to its source proposition text.
+ */
+export function designedBeliefTick(index: number, total: number): number {
+  return -(total - index);
+}
+
 interface Candidate extends SampledEvent {
   generation: number;
 }
@@ -72,6 +89,13 @@ export function stratifiedSelect(
   }
   for (const b of c.beliefsFormed) {
     allCandidates.push({ kind: "belief", tick: b.tick, npcId: b.npcId, generation: genOf.get(b.npcId) ?? 0 });
+  }
+  // Founder's designed beliefs (rendered once, in the founder's own generation-0
+  // section — see LineageChronicle.designedBeliefs' doc comment for why never per
+  // descendant). Same "belief" priority tier as formed beliefs.
+  const designedTotal = c.designedBeliefs.length;
+  for (let i = 0; i < designedTotal; i++) {
+    allCandidates.push({ kind: "belief", tick: designedBeliefTick(i, designedTotal), npcId: c.lineageId, generation: 0 });
   }
 
   const peakGeneration = c.peakGeneration;

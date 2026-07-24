@@ -18,6 +18,12 @@ export interface LineageChronicle {
   founderName: string;
   members: LineageMember[]; // sorted (generation, birthTick, npcId)
   beliefsFormed: { npcId: string; name: string; tick: number; proposition: string }[]; // from belief_formed events, members only
+  /** Founder's own roster-designed beliefs (source: "designed" — e.g. the Handcrafted
+   * arm's HANDCRAFTED_ARCHETYPES). Deliberately founder-only: under clone-inheritance
+   * every descendant carries an identical copy, and rendering it once per member
+   * would itself be a structural tell, so only the founder's own designed beliefs are
+   * ever exposed here — never scanned from descendants, even though they clone them. */
+  designedBeliefs: { proposition: string }[];
   weightDrift: { key: string; founder: number; latest: number }[]; // founder roster weights vs the LATEST-generation living member (tie: earliest npcId); empty if lineage extinct
   extinct: boolean;
   peakGeneration: number;
@@ -127,11 +133,16 @@ export function extractLineage(
     }));
   }
 
+  const designedBeliefs = founderRoster.beliefs
+    .filter((b) => b.source === "designed")
+    .map((b) => ({ proposition: b.proposition }));
+
   return {
     lineageId,
     founderName: founderRoster.name,
     members,
     beliefsFormed,
+    designedBeliefs,
     weightDrift,
     extinct,
     peakGeneration,

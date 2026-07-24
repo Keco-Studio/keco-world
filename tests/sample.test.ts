@@ -15,12 +15,17 @@ function member(npcId: string, generation: number, birthTick: number, overrides:
   };
 }
 
-function chronicle(members: LineageMember[], beliefsFormed: LineageChronicle["beliefsFormed"] = []): LineageChronicle {
+function chronicle(
+  members: LineageMember[],
+  beliefsFormed: LineageChronicle["beliefsFormed"] = [],
+  designedBeliefs: LineageChronicle["designedBeliefs"] = [],
+): LineageChronicle {
   return {
     lineageId: "lid",
     founderName: "Founder",
     members,
     beliefsFormed,
+    designedBeliefs,
     weightDrift: [],
     extinct: false,
     peakGeneration: Math.max(...members.map((m) => m.generation)),
@@ -82,7 +87,7 @@ describe("stratifiedSelect", () => {
 
   it("within a band, priority is death > belief_formed > birth", () => {
     const members: LineageMember[] = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 2; i++) {
       // gen 0, parents null: death candidates only, never birth candidates.
       members.push(member(`death-${i}`, 0, 0, { deathTick: 100 + i, deathCause: "old_age" }));
     }
@@ -90,11 +95,32 @@ describe("stratifiedSelect", () => {
       // gen 1, no death: birth candidates only.
       members.push(member(`birth-${i}`, 1, 200 + i));
     }
-    const c = chronicle(members);
-    const selected = stratifiedSelect(c, 3, 1); // single band, budget 3: forces the priority tiebreak
+    const beliefsFormed: LineageChronicle["beliefsFormed"] = [
+      { npcId: "death-0", name: "death-0", tick: 150, proposition: "belief-a" },
+      { npcId: "death-1", name: "death-1", tick: 160, proposition: "belief-b" },
+    ];
+    const c = chronicle(members, beliefsFormed);
+    // Single band, budget 3, pool = 2 deaths + 2 beliefs + 4 births (8 candidates,
+    // more than enough of every kind to fill the budget from any one tier alone) --
+    // isolates the priority tiebreak: expect 2 deaths + 1 belief, never a birth.
+    const selected = stratifiedSelect(c, 3, 1);
     expect(selected.length).toBe(3);
-    expect(selected.every((e) => e.kind === "death")).toBe(true);
-    expect(selected.map((e) => e.npcId).sort()).toEqual(["death-0", "death-1", "death-2"]);
+    expect(selected.filter((e) => e.kind === "death").length).toBe(2);
+    expect(selected.filter((e) => e.kind === "belief").length).toBe(1);
+    expect(selected.some((e) => e.kind === "birth")).toBe(false);
+  });
+
+  it("surfaces the founder's designed beliefs as belief-priority candidates in the founder's band", () => {
+    // chronicle()'s lineageId is fixed at "lid" -- the founder member's npcId must
+    // match it (extractLineage guarantees this for real chronicles: the founder
+    // roster entry's npcId IS the lineageId).
+    const members: LineageMember[] = [member("lid", 0, 0), member("child", 1, 10, { deathTick: 20, deathCause: "cold" })];
+    const designedBeliefs = [{ proposition: "冬藏胜于冬狩" }, { proposition: "远方总有新的浆果丛" }];
+    const c = chronicle(members, [], designedBeliefs);
+    const selected = stratifiedSelect(c);
+    const designedSelected = selected.filter((e) => e.kind === "belief" && e.npcId === "lid");
+    expect(designedSelected.length).toBe(2);
+    expect(designedSelected.every((e) => e.tick < 0)).toBe(true); // synthetic sentinel, never a real tick
   });
 
   it("is deterministic", () => {

@@ -69,8 +69,10 @@ function byCandidateKey(a: BioCandidate, b: BioCandidate): number {
   return compareIds(candidateKey(a), candidateKey(b));
 }
 
-/** Rendered-length match within ±20% (whichever side is longer). Two zero-length
- * texts count as matching; one zero-length against a nonzero one never matches. */
+/** Rendered-length match within ±20%: the length difference must be at most 20% of
+ * the SHORTER text's length (i.e. `(hi - lo) / lo <= 0.2`, denominator is `lo`, not
+ * whichever side happens to be Evolutionary/Handcrafted). Two zero-length texts
+ * count as matching; one zero-length against a nonzero one never matches. */
 function lengthMatches(a: string, b: string): boolean {
   const lo = Math.min(a.length, b.length);
   const hi = Math.max(a.length, b.length);

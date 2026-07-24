@@ -71,9 +71,21 @@ interface RawLine {
  * renderLine's belief branch): formed beliefs now read "{name}信奉：『…』，时在<season-year>。"
  * instead of the old "<season-year>，{name}学会了：『…』" — a deliberate, v1-visible
  * change (docs/prereg-1c-draft.md follow-up: de-blind belief-sentence leak). Only the
- * v2/selection path additionally surfaces the founder's designed beliefs (rendered
- * once, in the founder's own section, via the second "生来信奉" template) — v1 never
- * did and still doesn't.
+ * v2/selection path additionally surfaces the founder's designed beliefs.
+ *
+ * BLINDING SCOPING (2nd de-blind fix, docs/prereg-1c-draft.md §4 盲化核查表 信念句对称性):
+ * a re-review found that even after unifying the VERB (信奉 for both), the v2/selection
+ * path still had a categorical tell — formed beliefs carried a "，时在<season-year>。"
+ * timestamp and designed beliefs didn't ("生来信奉" vs "信奉...时在"), so any belief
+ * clause in a judge-packet biography still identified the arm with certainty (only
+ * Evolutionary ever has a formed/timestamped belief; only Handcrafted-with-designed-
+ * beliefs ever has a no-timestamp one). Fixed by scoping the blinding requirement to
+ * exactly where it's load-bearing: the v2/selection path (the only one `evalpack.ts`
+ * ever calls) now renders EVERY belief line — formed or designed — with ONE uniform,
+ * timestamp-free template: "{name}信奉：『{proposition}』。". The v1 (no-selection) path
+ * is a product-facing/demo renderer, not judge-packet material, so it deliberately
+ * keeps the richer rendering (designed beliefs never even reach it) — blinding
+ * constraints bind the eval instrument, not the product.
  */
 export function renderBiography(c: LineageChronicle, manifest: WorldManifest, selection?: SampledEvent[]): string {
   const nameOf = new Map(c.members.map((m) => [m.npcId, m.name] as const));
@@ -173,10 +185,16 @@ export function renderBiography(c: LineageChronicle, manifest: WorldManifest, se
     if (line.kind === "death") {
       return `${subject}${deathPhrase(line.cause ?? null)}，时在${seasonYear(line.tick, manifest)}。`;
     }
-    // belief: two templates, symmetric in register. Beliefs formed in play carry a
-    // real tick, so — like the death template above — they close on "，时在<season-year>。".
-    // Designed beliefs (founder-only, no formation tick) render in the founder's own
-    // intro context instead: "生来信奉" ("born believing"), no season-year clause.
+    // belief: selection mode (evalpack/judge-packet path) uses ONE uniform,
+    // timestamp-free template for every belief regardless of formed-vs-designed —
+    // see this function's BLINDING SCOPING doc comment above for why. The v1 path
+    // (no `selection`, never sees designed beliefs) keeps the richer two-template
+    // rendering: formed beliefs close on "，时在<season-year>。" like the death
+    // template above; a designed belief (unreachable here in v1, kept for the
+    // (currently unused-in-v1) `designed` flag's sake) would use "生来信奉".
+    if (selection !== undefined) {
+      return `${subject}信奉：『${line.proposition}』。`;
+    }
     if (line.designed === true) {
       return `${subject}生来信奉：『${line.proposition}』。`;
     }

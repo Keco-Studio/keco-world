@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { extractLineage } from "../src/chronicle/extract.js";
+import type { LineageChronicle, LineageMember } from "../src/chronicle/extract.js";
 import { renderBiography } from "../src/chronicle/biography.js";
 import { stratifiedSelect } from "../src/chronicle/sample.js";
 import { runSim } from "../src/sim/engine.js";
@@ -89,5 +90,55 @@ describe("lineage chronicle", () => {
 
     // Determinism.
     expect(renderBiography(c, manifest, selection)).toBe(md);
+  });
+});
+
+// 2nd de-blind fix (docs/prereg-1c-draft.md §4 盲化核查表 信念句对称性): a re-review
+// found that even after unifying formed/designed beliefs on the same VERB (信奉),
+// the v2/selection path still had a categorical tell -- formed beliefs carried a
+// "，时在<season-year>。" timestamp and designed beliefs didn't ("生来信奉" vs
+// "信奉...时在"), so any belief clause in a judge-packet biography still identified
+// the arm with certainty. This synthetic fixture has BOTH a formed belief and a
+// designed belief on the same tiny lineage, so both templates are directly
+// comparable in one render.
+describe("selection-mode belief template (blinding: uniform, no timestamp)", () => {
+  const founder: LineageMember = {
+    npcId: "f1",
+    name: "Founder",
+    generation: 0,
+    birthTick: 0,
+    parents: null,
+    deathTick: null,
+    deathCause: null,
+  };
+  const chronicle: LineageChronicle = {
+    lineageId: "f1",
+    founderName: "Founder",
+    members: [founder],
+    beliefsFormed: [{ npcId: "f1", name: "Founder", tick: 5, proposition: "formed-prop" }],
+    designedBeliefs: [{ proposition: "designed-prop" }],
+    weightDrift: [],
+    extinct: false,
+    peakGeneration: 0,
+  };
+  const manifest = makeTestManifest();
+
+  it("v2/selection path (evalpack's only path) renders formed and designed beliefs identically, no timestamp", () => {
+    const selection = stratifiedSelect(chronicle);
+    const md = renderBiography(chronicle, manifest, selection);
+    expect(md).toContain("Founder信奉：『formed-prop』。");
+    expect(md).toContain("Founder信奉：『designed-prop』。");
+    // Neither template artifact may appear anywhere in a selection-mode render that
+    // contains belief clauses -- this fixture has no births/deaths, so the whole
+    // document body is belief lines plus the fixed opening/closing prose.
+    expect(md).not.toContain("时在");
+    expect(md).not.toContain("生来");
+  });
+
+  it("v1 (no-selection) path is unaffected -- keeps its richer, timestamped rendering", () => {
+    const md = renderBiography(chronicle, manifest); // v1 never sees designed beliefs at all
+    expect(md).toContain("Founder信奉：『formed-prop』，时在");
+    expect(md).toContain("时在");
+    expect(md).not.toContain("designed-prop"); // designed beliefs are v2/selection-only
   });
 });

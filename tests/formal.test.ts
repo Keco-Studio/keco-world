@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { rmSync, mkdirSync, statSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { runFormalSeed, evaluateSGates, makeNocultureSetup } from "../src/cli/formal.js";
+import { runFormalSeed, evaluateSGates, makeNocultureSetup, aggregateSGates } from "../src/cli/formal.js";
+import type { SGateReport } from "../src/cli/formal.js";
 import { makeArmSetup } from "../src/arms/arms.js";
 import { runSim } from "../src/sim/engine.js";
 import { hashCanonical } from "../src/canon/canonicalize.js";
@@ -87,5 +88,59 @@ describe("formal runner", () => {
     expect(noculture.roster).toEqual(evo.roster);
     // manifest copy, not mutation: the evolutionary setup's own cognition is untouched.
     expect(evo.manifest.cognition.beliefDynamics).toBe("on");
+  });
+});
+
+/** Synthetic perSeed fixture: `survivedCount` of `total` seeds survive with a
+ * maxGeneration comfortably above the default minGen (50); the rest are extinct
+ * (maxGeneration 0). S2-S5 fields are set to always-pass values so only S1 varies. */
+function makePerSeed(total: number, survivedCount: number): SGateReport["perSeed"] {
+  return Array.from({ length: total }, (_, i) => ({
+    seedRoot: `synthetic-${i + 1}`,
+    survived: i < survivedCount,
+    maxGeneration: i < survivedCount ? 100 : 0,
+    s2Ratio1000: i < survivedCount ? 1000 : null,
+    s3MaxConsecutiveIdleBreaches: 0,
+    s4ZodValid: true,
+    s5BeliefCapOk: true,
+  }));
+}
+
+describe("aggregateSGates — S1 arm-level count threshold (frozen prereg semantics)", () => {
+  it("11/12 seeds surviving passes S1 (protocol explicitly tolerates this)", () => {
+    const perSeed = makePerSeed(12, 11);
+    const agg = aggregateSGates(perSeed, "evolutionary");
+    expect(agg.s1PassingSeeds).toBe(11);
+    expect(agg.s1Pass).toBe(true);
+  });
+
+  it("9/12 seeds surviving fails S1", () => {
+    const perSeed = makePerSeed(12, 9);
+    const agg = aggregateSGates(perSeed, "evolutionary");
+    expect(agg.s1PassingSeeds).toBe(9);
+    expect(agg.s1Pass).toBe(false);
+  });
+
+  it("default s1MinSeeds threshold for n=12 is 10 (ceil(12 * 10/12))", () => {
+    const perSeed10 = makePerSeed(12, 10);
+    const agg10 = aggregateSGates(perSeed10, "evolutionary");
+    expect(agg10.s1Pass).toBe(true);
+
+    const perSeed9 = makePerSeed(12, 9);
+    const agg9 = aggregateSGates(perSeed9, "evolutionary");
+    expect(agg9.s1Pass).toBe(false);
+  });
+
+  it("random arm is exempt from S1 regardless of survival count", () => {
+    const perSeed = makePerSeed(12, 0);
+    const agg = aggregateSGates(perSeed, "random");
+    expect(agg.exempt).toBe(true);
+    expect(agg.s1Pass).toBe(true);
+  });
+
+  it("s1MinSeeds is overridable", () => {
+    const perSeed = makePerSeed(12, 11);
+    const agg = aggregateSGates(perSeed, "evolutionary", { s1MinSeeds: 12 });
+    expect(agg.s1Pass).toBe(false); // 11 < strict override of 12
   });
 });

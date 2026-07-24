@@ -64,6 +64,14 @@ export interface FormalSeedMeta {
    * nothing on disk to check a spliced hash against; the extra rehashing would buy no
    * additional verifiability.
    *
+   * Note the granularity this buys: chunkTip hashes only the LAST event of the
+   * chunk. Tampering with an earlier event within a chunk (while leaving that
+   * chunk's final event and its own local previousEventHash chain internally
+   * consistent up to that point) is not, by itself, caught by actionChainTip — it
+   * relies on `checkpoints.json` (one stateHash per `checkpointInterval`) and
+   * `finalStateHash` to catch state-level divergence from such tampering, not the
+   * tip scalar itself.
+   *
    * Instead, actionChainTip is defined as a hash-of-tips chain computed once per
    * chunk from data the engine already produces:
    *   chunkTip_N = hashCanonical(lastEventOfChunk_N)   // null if chunk N's actionLog is empty
@@ -91,6 +99,10 @@ export interface SGateReport {
     s5BeliefCapOk: boolean;
   }[];
   s1Pass: boolean;
+  /** Count of seeds satisfying the per-seed S1 criterion (survived, and for breed
+   * arms maxGeneration >= minGen). Exposed alongside s1Pass so a report can show
+   * "11/12" rather than only the boolean verdict. */
+  s1PassingSeeds: number;
   s2Pass: boolean;
   s3Pass: boolean;
   s4Pass: boolean;
@@ -255,6 +267,51 @@ export function runFormalSeed(
   return meta;
 }
 
+/**
+ * Arm-level aggregation policy per gate (docs/prereg-1c-draft.md §2), applied over
+ * `perSeed`. Each gate aggregates differently — this is not a uniform "all seeds
+ * must pass" or "N of M seeds must pass" rule:
+ *
+ * - **S1 (survival + generation depth)**: COUNT THRESHOLD, frozen at ≥10/12 seeds
+ *   ("Random 臂除外的每臂 ≥10/12 seed 存活至 50k tick 且 maxGeneration ≥ 50"). This is
+ *   the one gate the prereg explicitly tolerates partial failure on — e.g. 11/12
+ *   surviving passes the arm. `s1MinSeeds` defaults to `ceil(perSeed.length * 10/12)`
+ *   (= 10 at the design point of 12 seeds/arm, scaling proportionally for other seed
+ *   counts) but can be overridden explicitly.
+ * - **S2 (no monoculture collapse)**: UNANIMOUS, but only over SEEDS THAT SURVIVED.
+ *   The prereg text ("终局基因组空间多样性 ≥ 创始值 30%") gives no seed-count qualifier
+ *   for S2 the way S1 has one, and a seed that went extinct already fails S1 with
+ *   nothing meaningful left to check for genome-space diversity — so S2 is the
+ *   most-faithful reading: every surviving seed's diversity ratio must clear 30%,
+ *   with extinct seeds excluded rather than counted as automatic S2 failures.
+ * - **S3 (world stays active)**: UNANIMOUS over all seeds — "任一 seed 不得出现连续 3
+ *   个 chunk idle 份额 > 600‰" is a per-seed hard constraint; any single seed
+ *   breaching it fails the arm.
+ * - **S4 (mutation bounds) / S5 (belief bounds)**: UNANIMOUS over all seeds — both
+ *   are zod/structural validity constraints with no stated tolerance in the prereg.
+ */
+export function aggregateSGates(
+  perSeed: SGateReport["perSeed"],
+  arm: FormalArmId,
+  opts: { minGen?: number; s1MinSeeds?: number } = {},
+): Omit<SGateReport, "perSeed"> {
+  const minGen = opts.minGen ?? 50;
+  const breedArm = isBreedArm(arm);
+  const exempt = arm === "random";
+  const s1MinSeeds = opts.s1MinSeeds ?? Math.ceil((perSeed.length * 10) / 12);
+
+  const s1PassingSeeds = perSeed.filter((s) => s.survived && (!breedArm || s.maxGeneration >= minGen)).length;
+  const s1Pass = exempt || s1PassingSeeds >= s1MinSeeds;
+
+  const survivors = perSeed.filter((s) => s.survived);
+  const s2Pass = exempt || !breedArm || survivors.every((s) => (s.s2Ratio1000 ?? 0) >= 300);
+  const s3Pass = exempt || perSeed.every((s) => !s.survived || s.s3MaxConsecutiveIdleBreaches < 3);
+  const s4Pass = perSeed.every((s) => s.s4ZodValid);
+  const s5Pass = perSeed.every((s) => s.s5BeliefCapOk);
+
+  return { s1Pass, s1PassingSeeds, s2Pass, s3Pass, s4Pass, s5Pass, exempt };
+}
+
 /** Evaluates the S1-S5 gates (docs/prereg-1c-draft.md §2) over every seed dir archived
  * under `armDir` (i.e. `<outDir>/<arm>`). Reads only what runFormalSeed wrote to disk —
  * meta.json, snapshots.jsonl, final-state.json.gz — so it works against any archived
@@ -262,12 +319,10 @@ export function runFormalSeed(
 export function evaluateSGates(
   armDir: string,
   arm: FormalArmId,
-  opts: { minAlive?: number; minGen?: number } = {},
+  opts: { minAlive?: number; minGen?: number; s1MinSeeds?: number } = {},
 ): SGateReport {
   const minAlive = opts.minAlive ?? 1;
-  const minGen = opts.minGen ?? 50;
   const breedArm = isBreedArm(arm);
-  const exempt = arm === "random";
 
   const seedRoots = existsSync(armDir)
     ? readdirSync(armDir).filter((name) => statSync(join(armDir, name)).isDirectory())
@@ -317,14 +372,9 @@ export function evaluateSGates(
     };
   });
 
-  const s1Pass =
-    exempt || perSeed.every((s) => s.survived && (!breedArm || s.maxGeneration >= minGen));
-  const s2Pass = exempt || !breedArm || perSeed.every((s) => !s.survived || (s.s2Ratio1000 ?? 0) >= 300);
-  const s3Pass = exempt || perSeed.every((s) => !s.survived || s.s3MaxConsecutiveIdleBreaches < 3);
-  const s4Pass = perSeed.every((s) => s.s4ZodValid);
-  const s5Pass = perSeed.every((s) => s.s5BeliefCapOk);
+  const aggregate = aggregateSGates(perSeed, arm, { minGen: opts.minGen, s1MinSeeds: opts.s1MinSeeds });
 
-  return { perSeed, s1Pass, s2Pass, s3Pass, s4Pass, s5Pass, exempt };
+  return { perSeed, ...aggregate };
 }
 
 // Guard against CLI execution during test imports
@@ -391,7 +441,9 @@ if (process.argv[1]?.endsWith("formal.ts") || process.argv[1]?.endsWith("formal.
           `${String(s.s4ZodValid).padEnd(11)} ${s.s5BeliefCapOk}`,
       );
     }
-    console.log(`\nS1 survival:            ${report.s1Pass ? "PASS" : "FAIL"}`);
+    console.log(
+      `\nS1 survival (${report.s1PassingSeeds}/${report.perSeed.length}): ${report.s1Pass ? "PASS" : "FAIL"}`,
+    );
     console.log(`S2 no monoculture:       ${report.s2Pass ? "PASS" : "FAIL"}`);
     console.log(`S3 world stays active:   ${report.s3Pass ? "PASS" : "FAIL"}`);
     console.log(`S4 mutation bounds hold: ${report.s4Pass ? "PASS" : "FAIL"}`);

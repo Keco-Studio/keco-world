@@ -10,9 +10,12 @@ import { runFromState } from "../sim/engine.js";
 import { makeArmSetup, ARM_IDS } from "../arms/arms.js";
 import type { ArmId, ArmSetup } from "../arms/arms.js";
 import { IdentityS, PolicyS, BeliefS, SCHEMA_VERSION } from "../schema/core.js";
+import type { RosterEntry } from "../schema/core.js";
 import { CANON_VERSION, hashCanonical } from "../canon/canonicalize.js";
 import { RNG_SCHEME_VERSION } from "../rng/rng.js";
 import { computeWeightDiversity1000 } from "../analysis/diversity.js";
+import { evaluateNovelty, rosterToGenomes, seedIndexOf } from "../analysis/novelty.js";
+import type { GenomeUnderTest } from "../scenarios/framework.js";
 
 /** Arm identifiers accepted by the formal runner: the four makeArmSetup arms, plus the
  * "noculture" ablation (evolutionary roster/breeding, beliefDynamics forced off). */
@@ -449,11 +452,52 @@ if (process.argv[1]?.endsWith("formal.ts") || process.argv[1]?.endsWith("formal.
     console.log(`S4 mutation bounds hold: ${report.s4Pass ? "PASS" : "FAIL"}`);
     console.log(`S5 belief system bounded:${report.s5Pass ? "PASS" : "FAIL"}`);
     console.log(`\nOutput: ${outFile}`);
+  } else if (subcommand === "novelty") {
+    const armArg = arg("arm", "");
+    if (armArg !== "evolutionary" && armArg !== "noculture") {
+      throw new Error(`--arm must be one of evolutionary, noculture, got ${JSON.stringify(armArg)}`);
+    }
+    const arm = armArg as "evolutionary" | "noculture";
+    const outDir = arg("out", join("runs", "formal"));
+
+    const fixedArmDir = join(outDir, "fixed");
+    if (!existsSync(fixedArmDir)) {
+      throw new Error(
+        `formal novelty: fixed arm archive not found at ${fixedArmDir} — N3 requires the fixed arm's ` +
+          `same-seed-index founder rosters on disk. Run 'formal run --arm fixed' first.`,
+      );
+    }
+    const fixedSeedRoots = readdirSync(fixedArmDir).filter((name) => statSync(join(fixedArmDir, name)).isDirectory());
+    const fixedFounderRosters = new Map<string, GenomeUnderTest[]>();
+    for (const seedRoot of fixedSeedRoots) {
+      const roster = JSON.parse(readFileSync(join(fixedArmDir, seedRoot, "roster.json"), "utf8")) as RosterEntry[];
+      fixedFounderRosters.set(seedIndexOf(seedRoot), rosterToGenomes(roster));
+    }
+
+    const report = evaluateNovelty(join(outDir, arm), fixedFounderRosters);
+    const outFile = join(outDir, `novelty-${arm}.json`);
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(outFile, JSON.stringify(report, null, 2));
+
+    console.log(`=== N-Gates: ${arm} ===`);
+    console.log("seed              n1VerbL1  n2Intra  n2FdrIntra  n3EvoVsFix  n3FdrVsFix  N1  N2  N3");
+    for (const s of report.perSeed) {
+      console.log(
+        `${s.seedRoot.padEnd(17)} ${s.n1VerbL1.toFixed(4).padEnd(9)} ${s.n2Intra.toFixed(4).padEnd(8)} ` +
+          `${s.n2FounderIntra.toFixed(4).padEnd(11)} ${s.n3EvolvedVsFixed.toFixed(4).padEnd(11)} ` +
+          `${s.n3FoundersVsFixed.toFixed(4).padEnd(11)} ${s.n1Pass ? "Y" : "N"}   ${s.n2Pass ? "Y" : "N"}   ${s.n3Pass ? "Y" : "N"}`,
+      );
+    }
+    console.log(`\nN1 behavioral drift:      ${report.n1Pass ? "PASS" : "FAIL"}`);
+    console.log(`N2 diversity maintenance: ${report.n2Pass ? "PASS" : "FAIL"}`);
+    console.log(`N3 directional novelty:   ${report.n3Pass ? "PASS" : "FAIL"}`);
+    console.log(`\nOutput: ${outFile}`);
   } else {
     console.error(
       `Usage: npm run formal -- run --arm <id|noculture> [--seeds 12] [--ticks 50000] [--chunk 1000] [--out runs/formal] [--seed-prefix pilot]`,
     );
     console.error(`       npm run formal -- gates --arm <id> [--out runs/formal]`);
+    console.error(`       npm run formal -- novelty --arm <evolutionary|noculture> [--out runs/formal]`);
     process.exit(1);
   }
 }

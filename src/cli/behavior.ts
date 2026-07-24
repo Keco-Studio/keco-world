@@ -34,7 +34,7 @@ export interface BehaviorReport {
  * byCategory/disagreementRate — the population-level analogue of compareGenomes for a
  * single genome pair.
  */
-function comparePooled(as: GenomeUnderTest[], bs: GenomeUnderTest[], scenarios: Scenario[]): GenomeComparison {
+export function comparePooled(as: GenomeUnderTest[], bs: GenomeUnderTest[], scenarios: Scenario[]): GenomeComparison {
   const tracesAByGenome = as.map((g) => evaluateGenome(g, scenarios));
   const tracesBByGenome = bs.map((g) => evaluateGenome(g, scenarios));
   const tracesA = tracesAByGenome.flat();

@@ -22,6 +22,7 @@
     "arms": "tsx src/cli/arms.ts",
     "formal": "tsx src/cli/formal.ts",
     "evalpack": "tsx src/cli/evalpack.ts",
+    "analyze": "tsx src/cli/analyze.ts",
     "patron-calibrate": "tsx src/cli/patron-calibrate.ts"
   },
   "keywords": [],

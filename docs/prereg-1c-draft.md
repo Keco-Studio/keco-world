@@ -45,7 +45,7 @@
 **epsilon 混淆应对（冻结口径）**：跨臂原始多样性数字不可比（baseline-arms 发现 2：犹豫带压制多样性 ~47%）；因此 N 组闸门全部采用**臂内自参照**（evolved vs 同 seed 自己的 founders）或**方向性比较**，不用跨臂绝对值。
 
 - **N1 行为漂移**：每 seed 取终局存活基因组池与创始池做池化比较（评审已裁定的等权采样法），verbL1 ≥ **0.30** 的 seed 数 ≥ 9/12。（锚点：evo-1 单 seed 59 代实测 0.656。）
-- **N2 多样性维持**：终局池内两两行为多样性 ≥ 同 seed 创始值的 **60%** 且绝对值 ≥ **0.25**。（锚点：evo-1 实测 0.471 vs 创始 0.369 = 128%。）
+- **N2 多样性维持**：终局池内两两行为多样性 ≥ 同 seed 创始值的 **60%** 且绝对值 ≥ **0.25** 的 seed 数 ≥ **9/12**（与 N1/N3 同一 seed-count 口径统一分母；草案原文遗漏此 qualifier，代码 `DEFAULT_NOVELTY_THRESHOLDS.minPassingSeeds` 对 N1/N2/N3 一视同仁地应用同一门槛，属编码落地时的补齐而非新引入判据——2026-07-24 补记，已列入 §10 待拍板供项目所有者确认）。（锚点：evo-1 实测 0.471 vs 创始 0.369 = 128%。）
 - **N3 远离固定基线**：cross(evolved_evo, founders_fixed) ≥ cross(founders_evo, founders_fixed) 的 seed 数 ≥ 9/12（进化在行为空间里离开而非收敛回无进化基线）。
 - **归因分析（不设闸门）**：Evolutionary vs Evo-NoCulture 同 seed 对比，分解"可遗传结构漂移"与"信念累积"对 N1/N2 的贡献；若 NoCulture 臂单独也能过 N1/N2，须在报告中如实声明"文化层非必要"。
 
@@ -57,8 +57,9 @@
   - 每臂每 seed 取存活血脉中**代数最深**的 1 条 + `drawInt(seedRoot, n, "bio-pick", 2)` 抽 2 条 → 每臂 36 条候选传记；
   - **跨代分层采样（修正传记截断偏置）**：把血脉存续代数等分为 4 段，12 条成员事件预算按 3/段分配；段内优先级 死亡(带死因) > belief_formed > 出生，同级取更早 tick；某段不足时余额顺延后段；结语规则不变；
   - **配对**：按代数带（如 1–15/16–30/31+）匹配 Evolutionary×Handcrafted 各一条，渲染字符长度差 ≤20%（超出则重抽该臂候选）；
-  - **盲化核查表**：无 seed/tick/臂名/机制词；两臂共用 NAME_POOL，名字不泄臂；渲染器输出禁用词 grep 过检（算力/代币/模型/锦标赛/LoRA/世界进化 + random/fixed/handcrafted/evolutionary）。
+  - **盲化核查表**：无 seed/tick/臂名/机制词；两臂共用 NAME_POOL，名字不泄臂；渲染器输出禁用词 grep 过检（算力/代币/模型/锦标赛/LoRA/世界进化 + random/fixed/handcrafted/evolutionary）；**信念句对称性**：若传记含"信念"类语句（如"它相信……"/"它认为……"），两臂必须用**同一模板寄存器**（措辞结构、出现位置、密度）呈现——不能只有一臂的传记带信念句、另一臂没有，因为"是否出现信念句"本身就是机制指纹，比任何禁用词都更隐蔽的去盲泄露点（代码评审中发现的具体去盲漏洞，2026-07-24 补记）。
 - **评委**：官方 ≥25 人（200 判断 ÷ 8）；形成性 12–20 人先行（用 pilot seed 素材，不消耗官方素材池）。
+- **形成性去盲探测（仅 pilot，不进官方问卷）**：每份形成性问卷末尾追加一道开放文本题——"你能猜出两条传记来自不同的生成系统吗？依据是什么？"——用于在冻结前发现盲化设计的漏洞（如上条信念句对称性问题的类型）；官方正式问卷不含此题，避免主动提示评委去找机制差异，反而制造新的去盲。
 - **通过判定**：偏好 Evolutionary 比例的双侧二项检验显著且方向为正，且点估计 ≥ 0.62。"显著但 < 0.62" = 方向成立但不足以支撑产品主张 → Iterate。
 
 ## 5. 次要终点（Holm–Bonferroni 家族校正）
@@ -79,7 +80,8 @@
 
 - 首个官方 seed 启动前：本方案冻结 + 分析代码 commit hash 写入本文件 + 全部阈值不可变。
 - 首次官方运行即记录；任何"重跑到通过"= 违规，发现即作废整组 seed。
-- 官方运行目录含 `directives.json`（本实验恒为 `[]`——无守望介入）+ manifest/roster/meta/actions/checkpoints，全部过 `--strict` 校验后归档（tar + sha256 入 docs/bench-results 同款仓库路径）。
+- 官方运行目录含 `directives.json`（本实验恒为 `[]`——无守望介入）+ `manifest.json`/`roster.json`/`meta.json`/`checkpoints.json`/`snapshots.jsonl`/`events.jsonl.gz`/`final-state.json.gz`（`src/cli/formal.ts` `runFormalSeed` 落盘格式），全部归档（tar + sha256 入 docs/bench-results 同款仓库路径）。
+- **归档范围修正（2026-07-24，任务 4 落地时确认）**：官方归档**不含逐 tick 原始 action log**。`meta.json` 只留 `actionChainTip`（每 chunk 末尾事件的哈希链尾，定义见 `FormalSeedMeta.actionChainTip` 的文档注释）和 `finalStateHash`；`events.jsonl.gz` 只含粗粒度语义事件（传记提取用，不是逐 tick 决策日志）；`checkpoints.json` 只是稀疏 state hash 序列。理由：内核是确定性的——同一 `seedRoot` + 同一 manifest + 同一 tick 数必然重放出逐字节相同的 actionLog，原始日志因此是**冗余信息**，任何时候都能用相同参数重新调用 `runFormalSeed`/`runFromState` 完整复现，不需要预先落盘占用归档空间。校验路径因此是"chain tip + 稀疏 checkpoint state hash + 需要时对该 seed 做无插入严格重跑，比对 `finalStateHash`/`actionChainTip`"，而不是从磁盘读原始日志逐条核对——这与 `npm run replay -- --strict` 对单次 `sim` 运行"重放优于存档"的验证哲学一致，只是在正式 1C 归档规模（12 seed × 5 臂 × 50k tick）下把"该存什么"也收紧到了这个哲学的逻辑终点。原草案文字中的 "actions" 一词（归档清单）随本条修正作废，以此条为准。
 - 中途发现 runner bug：修复后整臂重跑（同 seed 允许——确定性内核下这是重放而非重采样），并在报告中记录修复。
 
 ## 8. 成本与招募（待项目所有者拍板）
@@ -94,15 +96,20 @@
 
 ## 9. 冻结前须交付的代码（下一个实施计划的范围）
 
-1. `npm run formal -- --arm <id> --seeds 12 --ticks 50000`：断点续跑、按 chunk 落盘快照指标、终局全量基因组/事件归档、S 组判据代码化；
-2. 传记采样器 v2（跨代分层）+ 配对/盲化/核查表管线 + 评委问卷素材打包（HTML 或纸面）；
-3. N 组判据代码化（池化比较 + 方向性比较，全部输出进 report.json）;
-4. 次要终点评分 rubric 文档 + 双评分员一致性（Cohen's κ）计算脚本；
-5. 分析主脚本：一条命令从归档运行目录产出全部 S/N 判定 + 主/次终点统计。
+以下五项均已完成代码交付，标注**已交付(待冻结)**——"待冻结"是因为按本文件顶部的冻结条件，
+正式冻结仍需项目所有者审定 §10 待拍板清单 + 形成性小样跑通全流程；代码交付完成不等同于协
+议冻结，阈值/规则在冻结前仍可调整（调整只需改参数，不需要改产出接口，见每项的实现落点）。
+
+1. **已交付(待冻结)** — `npm run formal -- run --arm <id|noculture> [--seeds 12] [--ticks 50000] [--chunk 1000]`：按 seed 粒度断点续跑、按 chunk 落盘快照指标、终局全量基因组/事件归档（`src/cli/formal.ts` `runFormalSeed`）；`npm run formal -- gates --arm <id>` 做 S 组判据代码化（`evaluateSGates`/`aggregateSGates`）。测试：`tests/formal.test.ts`。
+2. **已交付(待冻结)** — 传记采样器 v2 跨代分层（`src/chronicle/sample.ts` `stratifiedSelect`）+ 配对/盲化/核查表管线（`src/eval/pairing.ts` `pickLineages`/`buildPairs`/`blindingViolations`）+ 评委问卷素材打包 `npm run evalpack`（`src/cli/evalpack.ts`，产出 `packet.html` + 独立的 `answer-key.json`）。测试：`tests/sample.test.ts`、`tests/pairing.test.ts`；`evalpack.ts` 本身的 CLI 装配未另建专属测试文件，按端到端手动冒烟验证（与本次 `analyze.ts` 同一惯例）。
+3. **已交付(待冻结)** — N 组判据代码化：池化比较（`comparePooled`，`src/cli/behavior.ts`）+ 方向性比较（`meanPairwiseVerbL1`/`meanCrossVerbL1`，`src/scenarios/metrics.ts`），全部输出进 `npm run formal -- novelty --arm <evolutionary|noculture>` 的 `novelty-<arm>.json`（`src/analysis/novelty.ts` `evaluateNoveltyForSeed`/`evaluateNovelty`）。测试：`tests/novelty.test.ts`。
+4. **已交付(待冻结)** — 次要终点评分 rubric 文档（`docs/eval-rubric.md`：回忆准确率 3 题模板、因果复述 0–3 锚定量表、转化率是/否）+ 双评分员一致性计算（`src/analysis/stats.ts` `cohenKappa`）。测试：`tests/analysis-stats.test.ts`。
+5. **已交付(待冻结)** — 分析主脚本 `npm run analyze -- --out runs/formal [--judgments <csv>]`（`src/cli/analyze.ts`）：聚合各臂 S/N 判定（优先读 `sgates-<arm>.json`/`novelty-<arm>.json`，缺失时按需现算），提供 `--judgments` 时联表 `answer-key.json` 计算主终点统计（精确二项检验 `binomTwoSided` + Wilson CI + 聚类稳健复核 `clusterRobustPrefSE`，均在 `src/analysis/stats.ts`），并打印 §6 的 Go/Iterate/Stop 建议行（`computeRecommendation`，仅供参考，决策仍为人工）；写 `analysis.json`。统计核心测试：`tests/analysis-stats.test.ts`（CLI 本身按本仓库既有惯例做了端到端手动冒烟验证，未另建 CLI 专属测试文件）。
 
 ## 10. 待拍板清单（冻结前必须逐项确认）
 
 - [ ] N1/N2/N3 阈值（0.30 / 60%+0.25 / 9:12）——基于 evo-1 单 seed 锚点的保守取值，是否接受；
+- [ ] N2 的 seed 数量门槛是否应与 N1/N3 共用同一 9/12 分母（当前实现口径：三者共用同一个 `minPassingSeeds` 参数，`src/analysis/novelty.ts` `DEFAULT_NOVELTY_THRESHOLDS`；§3 N2 行 2026-07-24 已据此补上 qualifier），还是 N2 应该有独立的、可能更严格或更宽松的门槛——控制器裁定（controller ruling）待项目所有者确认；
 - [ ] 传记预算 12 事件 4 段 3/段，代数带切分（1–15/16–30/31+）；
 - [ ] 人评走方案 A 还是 B；招募渠道与预算；
 - [ ] 次要终点三项是否全做（回忆准确率成本最低；因果复述需双评分员）；

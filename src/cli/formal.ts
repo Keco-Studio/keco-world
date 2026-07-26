@@ -117,9 +117,16 @@ export interface SGateReport {
   s2Pass: boolean;
   s3Pass: boolean;
   /** Count of surviving seeds satisfying terminalIdle1000 < 800. Exposed alongside
-   * s3Pass so a report can show "11/12" rather than only the boolean verdict — the
-   * same reasoning as s1PassingSeeds. */
+   * s3Pass so a report can show "9/9" rather than only the boolean verdict — the
+   * same reasoning as s1PassingSeeds, but note the denominator is s3EvaluatedSeeds
+   * (surviving seeds), NOT perSeed.length the way s1PassingSeeds's is. */
   s3PassingSeeds: number;
+  /** Number of seeds S3 was evaluated over, i.e. the surviving-seed count
+   * (perSeed.filter(s => s.survived).length) — S3's denominator. Extinct seeds are
+   * excluded entirely (they already fail S1), so this is generally < perSeed.length
+   * whenever any seed went extinct. Exposed so a report can print "s3PassingSeeds /
+   * s3EvaluatedSeeds" (e.g. "9/9") rather than mixing it with perSeed.length. */
+  s3EvaluatedSeeds: number;
   s4Pass: boolean;
   s5Pass: boolean;
   exempt: boolean; // random arm: reported but exempt from S1-S3
@@ -330,21 +337,30 @@ export function runFormalSeed(
  *   nothing meaningful left to check for genome-space diversity — so S2 is the
  *   most-faithful reading: every surviving seed's diversity ratio must clear 30%,
  *   with extinct seeds excluded rather than counted as automatic S2 failures.
- * - **S3 (world stays active — terminal-phase staticness, post-pilot remap)**: COUNT
- *   THRESHOLD over SURVIVING seeds, same ≥10/12 count rule as S1 (default
- *   `s3MinSeeds = Math.ceil(perSeed.length * 10 / 12)`, i.e. counted against the
- *   total seed count, not just the survivor count — mirroring how S1 computes its
- *   own default). The pilot (docs/pilot-1c.md §2.3) found idle-verb share climbs
- *   monotonically over a 50k-tick run: the original windowed "no 3 consecutive
- *   chunks >600‰ idle" criterion and any whole-run-mean variant both mis-measure
- *   "does the world stay active" once idle share ratchets up and stays up — a world
- *   that spends its first half lively and its second half static is exactly the
- *   failure mode both those formulations miss. S3 is therefore redefined as a
- *   TERMINAL-PHASE criterion: a surviving seed passes iff its `terminalIdle1000`
- *   (mean idle share over the final 10 snapshots, or all snapshots if fewer than 10)
- *   is < 800. Extinct seeds are EXCLUDED from the S3 count — same treatment S2
- *   already gives, and for the same reason (they already fail S1, nothing meaningful
- *   left to check for terminal-phase activity). The old per-seed
+ * - **S3 (world stays active — terminal-phase staticness, post-pilot remap, denominator
+ *   corrected 2026-07-26)**: COUNT THRESHOLD over SURVIVING seeds ONLY — both the
+ *   numerator (seeds passing) and the denominator (`s3MinSeeds`, default
+ *   `Math.ceil(survivors.length * 10 / 12)`) are computed against `survivors.length`,
+ *   NOT `perSeed.length`. S3 asks "among the worlds that persisted, are they still
+ *   active?" — extinction is already S1's business (an extinct seed already fails
+ *   S1, with nothing meaningful left to check for terminal-phase activity), so extinct
+ *   seeds must be excluded from BOTH sides of the count, the same way S2 excludes
+ *   them. (An earlier version of this rule mistakenly reused `perSeed.length` — S1's
+ *   denominator — for `s3MinSeeds`, which meant an arm that already failed S1 by
+ *   losing 3+ seeds could never pass S3 either even if every one of its survivors was
+ *   comfortably active; that was a bug in the spec, not a deliberate two-birds
+ *   coupling of S1 and S3.) If zero seeds survived, S3 fails outright — there is no
+ *   world left to demonstrate activity, and a naive `ceil(0 * 10/12) = 0` threshold
+ *   would otherwise trivially "pass" with nothing to show for it.
+ *
+ *   The pilot (docs/pilot-1c.md §2.3) found idle-verb share climbs monotonically over
+ *   a 50k-tick run: the original windowed "no 3 consecutive chunks >600‰ idle"
+ *   criterion and any whole-run-mean variant both mis-measure "does the world stay
+ *   active" once idle share ratchets up and stays up — a world that spends its first
+ *   half lively and its second half static is exactly the failure mode both those
+ *   formulations miss. S3 is therefore redefined as a TERMINAL-PHASE criterion: a
+ *   surviving seed passes iff its `terminalIdle1000` (mean idle share over the final
+ *   10 snapshots, or all snapshots if fewer than 10) is < 800. The old per-seed
  *   `s3MaxConsecutiveIdleBreaches` value is kept and still computed — it is now a
  *   REPORTED diagnostic only, not a gate.
  * - **S4 (mutation bounds) / S5 (belief bounds)**: UNANIMOUS over all seeds — both
@@ -359,7 +375,6 @@ export function aggregateSGates(
   const breedArm = isBreedArm(arm);
   const exempt = arm === "random";
   const s1MinSeeds = opts.s1MinSeeds ?? Math.ceil((perSeed.length * 10) / 12);
-  const s3MinSeeds = opts.s3MinSeeds ?? Math.ceil((perSeed.length * 10) / 12);
 
   const s1PassingSeeds = perSeed.filter((s) => s.survived && (!breedArm || s.maxGeneration >= minGen)).length;
   const s1Pass = exempt || s1PassingSeeds >= s1MinSeeds;
@@ -367,13 +382,17 @@ export function aggregateSGates(
   const survivors = perSeed.filter((s) => s.survived);
   const s2Pass = exempt || !breedArm || survivors.every((s) => (s.s2Ratio1000 ?? 0) >= 300);
 
+  const s3EvaluatedSeeds = survivors.length;
+  const s3MinSeeds = opts.s3MinSeeds ?? Math.ceil((s3EvaluatedSeeds * 10) / 12);
   const s3PassingSeeds = survivors.filter((s) => s.terminalIdle1000 !== null && s.terminalIdle1000 < 800).length;
-  const s3Pass = exempt || s3PassingSeeds >= s3MinSeeds;
+  // Zero survivors must fail outright — otherwise ceil(0 * 10/12) = 0 would let
+  // s3PassingSeeds (also 0) trivially clear the threshold with no world to show for it.
+  const s3Pass = exempt || (s3EvaluatedSeeds > 0 && s3PassingSeeds >= s3MinSeeds);
 
   const s4Pass = perSeed.every((s) => s.s4ZodValid);
   const s5Pass = perSeed.every((s) => s.s5BeliefCapOk);
 
-  return { s1Pass, s1PassingSeeds, s2Pass, s3Pass, s3PassingSeeds, s4Pass, s5Pass, exempt };
+  return { s1Pass, s1PassingSeeds, s2Pass, s3Pass, s3PassingSeeds, s3EvaluatedSeeds, s4Pass, s5Pass, exempt };
 }
 
 /** Evaluates the S1-S5 gates (docs/prereg-1c-draft.md §2) over every seed dir archived
@@ -526,7 +545,7 @@ if (process.argv[1]?.endsWith("formal.ts") || process.argv[1]?.endsWith("formal.
     );
     console.log(`S2 no monoculture:       ${report.s2Pass ? "PASS" : "FAIL"}`);
     console.log(
-      `S3 world stays active (terminal-phase, ${report.s3PassingSeeds}/${report.perSeed.length}): ` +
+      `S3 world stays active (terminal-phase, ${report.s3PassingSeeds}/${report.s3EvaluatedSeeds} surviving seeds): ` +
         `${report.s3Pass ? "PASS" : "FAIL"}  (s3MaxIdleRun column is a reported diagnostic, not the gate)`,
     );
     console.log(`S4 mutation bounds hold: ${report.s4Pass ? "PASS" : "FAIL"}`);

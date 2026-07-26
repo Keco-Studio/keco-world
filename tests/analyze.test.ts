@@ -29,6 +29,7 @@ function makeSGates(overrides: Partial<SGateReport> = {}): SGateReport {
     s2Pass: true,
     s3Pass: true,
     s3PassingSeeds: 12,
+    s3EvaluatedSeeds: 12,
     s4Pass: true,
     s5Pass: true,
     exempt: false,

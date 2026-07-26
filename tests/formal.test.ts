@@ -141,21 +141,26 @@ function snap(idle1000: number): FormalSnapshot {
   };
 }
 
-/** Synthetic perSeed fixture for S3 count-threshold tests: `passingCount` of `total`
- * surviving seeds have a passing (< 800) terminalIdle1000; the rest survive but sit
- * above the 800 threshold. S1/S2/S4/S5 fields are always-pass placeholders so only
- * S3 varies. */
-function makePerSeedForS3(total: number, passingCount: number): SGateReport["perSeed"] {
-  return Array.from({ length: total }, (_, i) => ({
-    seedRoot: `synthetic-s3-${i + 1}`,
-    survived: true,
-    maxGeneration: 100,
-    s2Ratio1000: 1000,
-    s3MaxConsecutiveIdleBreaches: 0,
-    terminalIdle1000: i < passingCount ? 500 : 900,
-    s4ZodValid: true,
-    s5BeliefCapOk: true,
-  }));
+/** Synthetic perSeed fixture for S3 count-threshold tests: `total` seeds in all,
+ * `survivedCount` of which survive (the rest are extinct: survived=false,
+ * terminalIdle1000=null, mirroring what evaluateSGates actually produces), and
+ * `passingCount` of the SURVIVING seeds have a passing (< 800) terminalIdle1000 (the
+ * remaining survivors sit above the 800 threshold). S1/S2/S4/S5 fields are
+ * always-pass placeholders so only S3 varies. */
+function makePerSeedForS3(total: number, survivedCount: number, passingCount: number): SGateReport["perSeed"] {
+  return Array.from({ length: total }, (_, i) => {
+    const survived = i < survivedCount;
+    return {
+      seedRoot: `synthetic-s3-${i + 1}`,
+      survived,
+      maxGeneration: survived ? 100 : 0,
+      s2Ratio1000: survived ? 1000 : null,
+      s3MaxConsecutiveIdleBreaches: 0,
+      terminalIdle1000: survived ? (i < passingCount ? 500 : 900) : null,
+      s4ZodValid: true,
+      s5BeliefCapOk: true,
+    };
+  });
 }
 
 describe("computeTerminalIdle1000 — terminal-phase staticness math", () => {
@@ -206,45 +211,57 @@ describe("computeIdleSlope1000 — first10/last10 diagnostic", () => {
   });
 });
 
-describe("aggregateSGates — S3 terminal-phase staticness gate (frozen post-pilot semantics)", () => {
-  it("extinct seed yields exclusion from the S3 count regardless of survival mix", () => {
-    // 11 survivors all passing (terminalIdle1000=100 < 800), 1 extinct seed. If the
-    // extinct seed counted as an automatic S3 failure, s3PassingSeeds would need to
-    // be 11/12 to pass at the default threshold (10); it does pass here because the
-    // extinct seed is excluded from the denominator's numerator entirely — the
-    // default s3MinSeeds (10 for n=12) is met by the 11 survivors alone.
-    const perSeed = makePerSeed(12, 11);
+describe("aggregateSGates — S3 terminal-phase staticness gate (denominator = surviving seeds only)", () => {
+  it("fixed-arm pilot case: 3 seeds extinct, all 9 survivors pass terminalIdle1000<800 => S3 PASS", () => {
+    // This is exactly the case the pilot's Fixed arm surfaced: 9/12 seeds survive
+    // (3 extinct, already failing S1), and every one of the 9 survivors is
+    // individually active (terminalIdle1000 < 800). The S3 denominator must be the
+    // survivor count (9), not perSeed.length (12) — threshold = ceil(9*10/12) = 8 —
+    // so 9 passing survivors clears it, even though 9 < 12.
+    const perSeed = makePerSeedForS3(12, 9, 9);
     const extinctSeed = perSeed.find((s) => !s.survived)!;
     expect(extinctSeed.terminalIdle1000).toBeNull();
+    expect(extinctSeed.survived).toBe(false);
 
     const agg = aggregateSGates(perSeed, "evolutionary");
-    expect(agg.s3PassingSeeds).toBe(11);
+    expect(agg.s3EvaluatedSeeds).toBe(9);
+    expect(agg.s3PassingSeeds).toBe(9);
     expect(agg.s3Pass).toBe(true);
   });
 
-  it("s3 count threshold boundary: 10/12 surviving-and-passing passes, 9/12 fails", () => {
-    const perSeed10 = makePerSeedForS3(12, 10);
-    const agg10 = aggregateSGates(perSeed10, "evolutionary");
-    expect(agg10.s3PassingSeeds).toBe(10);
-    expect(agg10.s3Pass).toBe(true);
+  it("s3 count threshold boundary over 9 survivors: 8/9 passes (ceil(9*10/12)=8), 7/9 fails", () => {
+    const perSeed8 = makePerSeedForS3(9, 9, 8); // 9 total, all survive, 8 pass
+    const agg8 = aggregateSGates(perSeed8, "evolutionary");
+    expect(agg8.s3EvaluatedSeeds).toBe(9);
+    expect(agg8.s3PassingSeeds).toBe(8);
+    expect(agg8.s3Pass).toBe(true);
 
-    const perSeed9 = makePerSeedForS3(12, 9);
-    const agg9 = aggregateSGates(perSeed9, "evolutionary");
-    expect(agg9.s3PassingSeeds).toBe(9);
-    expect(agg9.s3Pass).toBe(false);
+    const perSeed7 = makePerSeedForS3(9, 9, 7);
+    const agg7 = aggregateSGates(perSeed7, "evolutionary");
+    expect(agg7.s3EvaluatedSeeds).toBe(9);
+    expect(agg7.s3PassingSeeds).toBe(7);
+    expect(agg7.s3Pass).toBe(false);
   });
 
-  it("random arm is exempt from S3 regardless of terminalIdle1000", () => {
-    const perSeed = makePerSeedForS3(12, 0); // all "surviving" seeds fail the 800 threshold
+  it("zero survivors fails S3 outright, not a trivial ceil(0*10/12)=0 pass", () => {
+    const perSeed = makePerSeedForS3(12, 0, 0);
+    const agg = aggregateSGates(perSeed, "evolutionary");
+    expect(agg.s3EvaluatedSeeds).toBe(0);
+    expect(agg.s3PassingSeeds).toBe(0);
+    expect(agg.s3Pass).toBe(false);
+  });
+
+  it("random arm is exempt from S3 regardless of terminalIdle1000 or survivor count", () => {
+    const perSeed = makePerSeedForS3(12, 0, 0); // zero survivors — would fail S3 outright if not exempt
     const agg = aggregateSGates(perSeed, "random");
     expect(agg.exempt).toBe(true);
     expect(agg.s3Pass).toBe(true);
   });
 
   it("s3MinSeeds is overridable", () => {
-    const perSeed = makePerSeedForS3(12, 10);
-    const agg = aggregateSGates(perSeed, "evolutionary", { s3MinSeeds: 11 });
-    expect(agg.s3Pass).toBe(false); // 10 < strict override of 11
+    const perSeed = makePerSeedForS3(9, 9, 8);
+    const agg = aggregateSGates(perSeed, "evolutionary", { s3MinSeeds: 9 });
+    expect(agg.s3Pass).toBe(false); // 8 < strict override of 9
   });
 });
 

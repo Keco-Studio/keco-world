@@ -163,72 +163,77 @@ function loadOrComputeNovelty(outDir: string, arm: "evolutionary" | "noculture")
   return evaluateNovelty(armDir, fixedFounderRosters, DEFAULT_NOVELTY_THRESHOLDS);
 }
 
-export type Verdict = "Go" | "Iterate" | "Stop" | "Unavailable" | "Incomplete";
+export type Verdict = "Go" | "Iterate" | "Stop";
 export interface Recommendation {
   verdict: Verdict;
   reason: string;
 }
 
 /**
- * Go/Iterate/Stop mapping per docs/prereg-1c-draft.md §6. This is advisory only — the
- * decision itself stays human (§6 is explicit that Iterate/Stop trigger a
- * project-owner review, not an automatic pipeline branch), so callers must not treat
- * this return value as authorization to act.
+ * Go/Iterate/Stop mapping per docs/prereg-1c-draft.md §6, remapped post-pilot
+ * (docs/pilot-1c.md §2.2) so the S-gates-overall verdict — and hence Stop's S1
+ * clause — is based on the EVOLUTIONARY arm only, not "any arm's S-gate failure".
  *
- * "Unavailable"/"Incomplete" are not in §6's three-way vocabulary; they cover the
- * two states §6 doesn't address (no S-gate data at all; S/N available but no
- * --judgments supplied) so the CLI never has to silently guess a verdict from a
- * partial run.
+ * Rationale: baseline-arm extinction (Fixed/Handcrafted/Random going extinct) is a
+ * COMPARATIVE result about those arms — it's the very thing the baseline arms exist
+ * to measure (does evolution improve survival relative to non-evolving controls) —
+ * not evidence that the world under test (the Evolutionary arm) is itself unstable.
+ * §6's original "S 组任一失败 ⇒ Stop" wording conflated the two; it already exempted
+ * Random from S1-S3 ("Random 臂灭绝不算 S 组失败"), which shows exempting
+ * comparison-only arms from the Stop trigger was already the intent — this change
+ * just makes that exemption consistent across all baseline arms, not just Random.
+ *
+ * This is advisory only — the decision itself stays human (§6 is explicit that
+ * Iterate/Stop trigger a project-owner review, not an automatic pipeline branch), so
+ * callers must not treat this return value as authorization to act.
+ *
+ * The three-way Go/Iterate/Stop vocabulary is now exhaustive (no separate
+ * "Unavailable"/"Incomplete" verdict): a missing evolutionary S-gate report, or a
+ * primary endpoint that was never computed (no --judgments supplied), simply makes
+ * Go unreachable (its preconditions require the data) and Stop's S1 clause inert
+ * (nothing to report as FAILED), so the recommendation falls through to Iterate.
  */
 export function computeRecommendation(
-  sPass: boolean,
-  sAvailable: boolean,
-  evoNovelty: NoveltyReport | undefined,
+  evoSGates: SGateReport | undefined,
   nPass: boolean,
   primary: PrimaryEndpointResult | null,
 ): Recommendation {
-  // Stop's negative-direction clause is checked first and can override an
-  // otherwise-passing S/N state: "观众明确更爱手工内容" is a product-level verdict
-  // independent of world-stability gates.
-  if (primary !== null && primary.pointEstimate < 0.5 && primary.wilson.hi < 0.5) {
-    return {
-      verdict: "Stop",
-      reason: "primary endpoint direction negative and Wilson CI upper bound < 0.5 (§6 Stop: 观众明确更爱手工内容)",
-    };
+  const evoS1Fail = evoSGates !== undefined && !evoSGates.s1Pass;
+  const negativeStop = primary !== null && primary.pointEstimate < 0.5 && primary.wilson.hi < 0.5;
+
+  if (evoS1Fail || negativeStop) {
+    const reasons: string[] = [];
+    if (evoS1Fail) {
+      reasons.push("evolutionary arm S1 failed (world itself is not stable; §6 Stop)");
+    }
+    if (negativeStop) {
+      reasons.push("primary endpoint direction negative and Wilson CI upper bound < 0.5 (§6 Stop: 观众明确更爱手工内容)");
+    }
+    return { verdict: "Stop", reason: reasons.join("; ") };
   }
 
-  if (!sAvailable) {
-    return { verdict: "Unavailable", reason: "no S-gate reports found under --out; run `formal gates` for each arm first" };
-  }
-  if (!sPass) {
-    return { verdict: "Stop", reason: "an S-gate failed for at least one arm (world itself is not stable; §6 Stop)" };
-  }
+  const evoSGatesAllPass =
+    evoSGates !== undefined &&
+    evoSGates.s1Pass &&
+    evoSGates.s2Pass &&
+    evoSGates.s3Pass &&
+    evoSGates.s4Pass &&
+    evoSGates.s5Pass;
 
-  if (primary === null) {
-    return { verdict: "Incomplete", reason: "S gates pass; primary endpoint not computed (no --judgments supplied)" };
-  }
-
-  if (nPass && primary.primaryPass) {
+  if (evoSGatesAllPass && nPass && primary !== null && primary.primaryPass) {
     return {
       verdict: "Go",
-      reason: "S gates pass, N gates pass, primary endpoint significant with point estimate >= 0.62 (§6 Go)",
-    };
-  }
-
-  const nPassCount = evoNovelty ? [evoNovelty.n1Pass, evoNovelty.n2Pass, evoNovelty.n3Pass].filter(Boolean).length : 0;
-  if (primary.pointEstimate > 0.5 || nPassCount >= 2) {
-    return {
-      verdict: "Iterate",
-      reason: "S gates pass; N gates or primary endpoint short of Go, but direction is positive (§6 Iterate)",
+      reason:
+        "evolutionary arm S1-S5 all pass, N gates pass, primary endpoint computed and significant with point " +
+        "estimate >= 0.62 (§6 Go)",
     };
   }
 
   return {
     verdict: "Iterate",
     reason:
-      "S gates pass but neither Go nor Stop criteria are met (direction not clearly positive, and CI does not clearly " +
-      "exclude 0.5 either); defaulting to Iterate pending human review, since §6's Stop clause requires both a negative " +
-      "point estimate AND a Wilson CI upper bound < 0.5",
+      "Go/Stop criteria not met (evolutionary S-gates, N-gates, and/or the primary endpoint fall short of Go, and " +
+      "neither Stop trigger fired); defaulting to Iterate pending human review (§6)",
   };
 }
 
@@ -236,6 +241,12 @@ export interface AnalysisResult {
   sGates: Record<string, SGateReport>;
   novelty: Record<string, NoveltyReport>;
   sPass: boolean;
+  /** Which arm's S-gate report the `sPass` overall verdict (and the recommendation's
+   * S1-Stop clause) is computed from. Frozen to "evolutionary" post-pilot
+   * (docs/pilot-1c.md §2.2, see computeRecommendation's doc comment) — other arms'
+   * sGates entries are still reported in full but are comparative/attribution data,
+   * not inputs to the overall S-gates verdict. */
+  sGatesOverallBasis: "evolutionary";
   nPass: boolean;
   primaryEndpoint: PrimaryEndpointResult | null;
   recommendation: Recommendation;
@@ -254,8 +265,16 @@ export function runAnalysis(outDir: string, judgmentsPath?: string, answerKeyPat
     if (report !== null) novelty[arm] = report;
   }
 
-  const sAvailable = Object.keys(sGates).length > 0;
-  const sPass = sAvailable && Object.values(sGates).every((r) => r.s1Pass && r.s2Pass && r.s3Pass && r.s4Pass && r.s5Pass);
+  // Post-pilot remap (docs/pilot-1c.md §2.2): the S-gates-overall verdict is the
+  // EVOLUTIONARY arm's S1-S5 only. Other arms' reports remain in `sGates` (printed
+  // and written to analysis.json in full) but are reported/comparative — baseline-arm
+  // extinction is a finding about those arms, not evidence the evolutionary world
+  // under test is unstable. See computeRecommendation's doc comment for the full
+  // rationale.
+  const sGatesOverallBasis = "evolutionary" as const;
+  const evoSGates = sGates[sGatesOverallBasis];
+  const sPass = evoSGates !== undefined && evoSGates.s1Pass && evoSGates.s2Pass && evoSGates.s3Pass && evoSGates.s4Pass && evoSGates.s5Pass;
+
   // Per docs/prereg-1c-draft.md §3, Evo-NoCulture is attribution-only ("不投闸门票") —
   // only the Evolutionary arm's novelty report gates the N-group verdict.
   const evoNovelty = novelty["evolutionary"];
@@ -272,9 +291,9 @@ export function runAnalysis(outDir: string, judgmentsPath?: string, answerKeyPat
     primaryEndpoint = computePrimaryEndpoint(judgments, answerKey);
   }
 
-  const recommendation = computeRecommendation(sPass, sAvailable, evoNovelty, nPass, primaryEndpoint);
+  const recommendation = computeRecommendation(evoSGates, nPass, primaryEndpoint);
 
-  return { sGates, novelty, sPass, nPass, primaryEndpoint, recommendation };
+  return { sGates, novelty, sPass, sGatesOverallBasis, nPass, primaryEndpoint, recommendation };
 }
 
 // Guard against CLI execution during test imports
@@ -299,10 +318,11 @@ if (process.argv[1]?.endsWith("analyze.ts") || process.argv[1]?.endsWith("analyz
     console.log("S-gates: no reports found (run `formal gates --arm <id>` per arm first)");
   }
   for (const [arm, report] of Object.entries(result.sGates)) {
+    const basisNote = arm === result.sGatesOverallBasis ? "" : "  [reported/comparative — not part of S-gates-overall]";
     console.log(
       `S-gates ${arm.padEnd(12)} S1=${report.s1Pass ? "PASS" : "FAIL"} S2=${report.s2Pass ? "PASS" : "FAIL"} ` +
         `S3=${report.s3Pass ? "PASS" : "FAIL"} S4=${report.s4Pass ? "PASS" : "FAIL"} S5=${report.s5Pass ? "PASS" : "FAIL"} ` +
-        `exempt=${report.exempt}`,
+        `exempt=${report.exempt}${basisNote}`,
     );
   }
   for (const [arm, report] of Object.entries(result.novelty)) {
@@ -310,7 +330,10 @@ if (process.argv[1]?.endsWith("analyze.ts") || process.argv[1]?.endsWith("analyz
       `N-gates ${arm.padEnd(12)} N1=${report.n1Pass ? "PASS" : "FAIL"} N2=${report.n2Pass ? "PASS" : "FAIL"} N3=${report.n3Pass ? "PASS" : "FAIL"}`,
     );
   }
-  console.log(`\nS gates overall: ${result.sPass ? "PASS" : "FAIL"}`);
+  console.log(
+    `\nS gates overall (${result.sGatesOverallBasis} arm only — other arms above are reported/comparative, ` +
+      `see docs/pilot-1c.md §2.2): ${result.sPass ? "PASS" : "FAIL"}`,
+  );
   console.log(`N gates overall (evolutionary arm, noculture is attribution-only): ${result.nPass ? "PASS" : "FAIL"}`);
 
   if (result.primaryEndpoint) {

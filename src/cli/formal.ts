@@ -97,7 +97,15 @@ export interface SGateReport {
     survived: boolean;
     maxGeneration: number;
     s2Ratio1000: number | null;
+    /** Diagnostic only as of the terminal-phase S3 remap below — no longer the S3
+     * pass/fail rule, kept because it's still a useful "how bursty was the idle
+     * breach pattern" signal. */
     s3MaxConsecutiveIdleBreaches: number;
+    /** Mean of verbShares1000.idle over the final 10 snapshots (or all snapshots if
+     * fewer than 10), floored to an integer. null for extinct seeds (excluded from
+     * S3 the same way S2 excludes them — they already fail S1). This is the S3
+     * pass/fail quantity: a seed passes iff terminalIdle1000 < 800. */
+    terminalIdle1000: number | null;
     s4ZodValid: boolean;
     s5BeliefCapOk: boolean;
   }[];
@@ -108,9 +116,44 @@ export interface SGateReport {
   s1PassingSeeds: number;
   s2Pass: boolean;
   s3Pass: boolean;
+  /** Count of surviving seeds satisfying terminalIdle1000 < 800. Exposed alongside
+   * s3Pass so a report can show "11/12" rather than only the boolean verdict — the
+   * same reasoning as s1PassingSeeds. */
+  s3PassingSeeds: number;
   s4Pass: boolean;
   s5Pass: boolean;
   exempt: boolean; // random arm: reported but exempt from S1-S3
+  /** Report-only (no gate): mean idle share over each seed's first 10 and last 10
+   * snapshots, the 观看无聊 ("watching is boring") quantification the pilot
+   * (docs/pilot-1c.md §2.3) flagged as a first-class finding — idle share climbs
+   * monotonically over a run, so this is reported for every seed regardless of
+   * survival status. */
+  idleSlope1000: { seedRoot: string; firstTen: number; lastTen: number }[];
+}
+
+/** Mean of verbShares1000.idle over the final min(10, snapshots.length) snapshots,
+ * floored to an integer. Returns 0 for an empty snapshot array (extinct-at-tick-0
+ * edge case; callers with a genuinely extinct seed should treat that seed as
+ * excluded rather than rely on this fallback — see terminalIdle1000's null case). */
+export function computeTerminalIdle1000(snapshots: FormalSnapshot[]): number {
+  const window = snapshots.length > 10 ? snapshots.slice(-10) : snapshots;
+  if (window.length === 0) return 0;
+  const sum = window.reduce((acc, s) => acc + (s.verbShares1000["idle"] ?? 0), 0);
+  return Math.floor(sum / window.length);
+}
+
+/** Mean idle share over a seed's first 10 and last 10 snapshots (or all snapshots if
+ * fewer than 10 exist), each floored to an integer — the "观看无聊" slope diagnostic.
+ * Report-only: computed for every seed regardless of survival. */
+export function computeIdleSlope1000(snapshots: FormalSnapshot[]): { firstTen: number; lastTen: number } {
+  const mean = (window: FormalSnapshot[]): number => {
+    if (window.length === 0) return 0;
+    const sum = window.reduce((acc, s) => acc + (s.verbShares1000["idle"] ?? 0), 0);
+    return Math.floor(sum / window.length);
+  };
+  const firstWindow = snapshots.slice(0, Math.min(10, snapshots.length));
+  const lastWindow = snapshots.length > 10 ? snapshots.slice(-10) : snapshots;
+  return { firstTen: mean(firstWindow), lastTen: mean(lastWindow) };
 }
 
 /** Evolutionary roster + cognition, with beliefDynamics forced off (§6.6 culture-ablation
@@ -287,32 +330,50 @@ export function runFormalSeed(
  *   nothing meaningful left to check for genome-space diversity — so S2 is the
  *   most-faithful reading: every surviving seed's diversity ratio must clear 30%,
  *   with extinct seeds excluded rather than counted as automatic S2 failures.
- * - **S3 (world stays active)**: UNANIMOUS over all seeds — "任一 seed 不得出现连续 3
- *   个 chunk idle 份额 > 600‰" is a per-seed hard constraint; any single seed
- *   breaching it fails the arm.
+ * - **S3 (world stays active — terminal-phase staticness, post-pilot remap)**: COUNT
+ *   THRESHOLD over SURVIVING seeds, same ≥10/12 count rule as S1 (default
+ *   `s3MinSeeds = Math.ceil(perSeed.length * 10 / 12)`, i.e. counted against the
+ *   total seed count, not just the survivor count — mirroring how S1 computes its
+ *   own default). The pilot (docs/pilot-1c.md §2.3) found idle-verb share climbs
+ *   monotonically over a 50k-tick run: the original windowed "no 3 consecutive
+ *   chunks >600‰ idle" criterion and any whole-run-mean variant both mis-measure
+ *   "does the world stay active" once idle share ratchets up and stays up — a world
+ *   that spends its first half lively and its second half static is exactly the
+ *   failure mode both those formulations miss. S3 is therefore redefined as a
+ *   TERMINAL-PHASE criterion: a surviving seed passes iff its `terminalIdle1000`
+ *   (mean idle share over the final 10 snapshots, or all snapshots if fewer than 10)
+ *   is < 800. Extinct seeds are EXCLUDED from the S3 count — same treatment S2
+ *   already gives, and for the same reason (they already fail S1, nothing meaningful
+ *   left to check for terminal-phase activity). The old per-seed
+ *   `s3MaxConsecutiveIdleBreaches` value is kept and still computed — it is now a
+ *   REPORTED diagnostic only, not a gate.
  * - **S4 (mutation bounds) / S5 (belief bounds)**: UNANIMOUS over all seeds — both
  *   are zod/structural validity constraints with no stated tolerance in the prereg.
  */
 export function aggregateSGates(
   perSeed: SGateReport["perSeed"],
   arm: FormalArmId,
-  opts: { minGen?: number; s1MinSeeds?: number } = {},
-): Omit<SGateReport, "perSeed"> {
+  opts: { minGen?: number; s1MinSeeds?: number; s3MinSeeds?: number } = {},
+): Omit<SGateReport, "perSeed" | "idleSlope1000"> {
   const minGen = opts.minGen ?? 50;
   const breedArm = isBreedArm(arm);
   const exempt = arm === "random";
   const s1MinSeeds = opts.s1MinSeeds ?? Math.ceil((perSeed.length * 10) / 12);
+  const s3MinSeeds = opts.s3MinSeeds ?? Math.ceil((perSeed.length * 10) / 12);
 
   const s1PassingSeeds = perSeed.filter((s) => s.survived && (!breedArm || s.maxGeneration >= minGen)).length;
   const s1Pass = exempt || s1PassingSeeds >= s1MinSeeds;
 
   const survivors = perSeed.filter((s) => s.survived);
   const s2Pass = exempt || !breedArm || survivors.every((s) => (s.s2Ratio1000 ?? 0) >= 300);
-  const s3Pass = exempt || perSeed.every((s) => !s.survived || s.s3MaxConsecutiveIdleBreaches < 3);
+
+  const s3PassingSeeds = survivors.filter((s) => s.terminalIdle1000 !== null && s.terminalIdle1000 < 800).length;
+  const s3Pass = exempt || s3PassingSeeds >= s3MinSeeds;
+
   const s4Pass = perSeed.every((s) => s.s4ZodValid);
   const s5Pass = perSeed.every((s) => s.s5BeliefCapOk);
 
-  return { s1Pass, s1PassingSeeds, s2Pass, s3Pass, s4Pass, s5Pass, exempt };
+  return { s1Pass, s1PassingSeeds, s2Pass, s3Pass, s3PassingSeeds, s4Pass, s5Pass, exempt };
 }
 
 /** Evaluates the S1-S5 gates (docs/prereg-1c-draft.md §2) over every seed dir archived
@@ -322,7 +383,7 @@ export function aggregateSGates(
 export function evaluateSGates(
   armDir: string,
   arm: FormalArmId,
-  opts: { minAlive?: number; minGen?: number; s1MinSeeds?: number } = {},
+  opts: { minAlive?: number; minGen?: number; s1MinSeeds?: number; s3MinSeeds?: number } = {},
 ): SGateReport {
   const minAlive = opts.minAlive ?? 1;
   const breedArm = isBreedArm(arm);
@@ -331,7 +392,7 @@ export function evaluateSGates(
     ? readdirSync(armDir).filter((name) => statSync(join(armDir, name)).isDirectory())
     : [];
 
-  const perSeed = seedRoots.map((seedRoot) => {
+  const perSeedAndSlope = seedRoots.map((seedRoot) => {
     const seedDir = join(armDir, seedRoot);
     const meta = JSON.parse(readFileSync(join(seedDir, "meta.json"), "utf8")) as FormalSeedMeta;
     const snapshots = readFileSync(join(seedDir, "snapshots.jsonl"), "utf8")
@@ -364,20 +425,34 @@ export function evaluateSGates(
     const s4ZodValid = zodValidateAlive(finalState);
     const s5BeliefCapOk = snapshots.every((s) => s.beliefsMaxPerNpc <= 16);
 
+    const terminalIdle1000 = survived ? computeTerminalIdle1000(snapshots) : null;
+    const idleSlope = computeIdleSlope1000(snapshots);
+
     return {
-      seedRoot,
-      survived,
-      maxGeneration: meta.maxGeneration,
-      s2Ratio1000,
-      s3MaxConsecutiveIdleBreaches,
-      s4ZodValid,
-      s5BeliefCapOk,
+      perSeed: {
+        seedRoot,
+        survived,
+        maxGeneration: meta.maxGeneration,
+        s2Ratio1000,
+        s3MaxConsecutiveIdleBreaches,
+        terminalIdle1000,
+        s4ZodValid,
+        s5BeliefCapOk,
+      },
+      idleSlope: { seedRoot, firstTen: idleSlope.firstTen, lastTen: idleSlope.lastTen },
     };
   });
 
-  const aggregate = aggregateSGates(perSeed, arm, { minGen: opts.minGen, s1MinSeeds: opts.s1MinSeeds });
+  const perSeed = perSeedAndSlope.map((r) => r.perSeed);
+  const idleSlope1000 = perSeedAndSlope.map((r) => r.idleSlope);
 
-  return { perSeed, ...aggregate };
+  const aggregate = aggregateSGates(perSeed, arm, {
+    minGen: opts.minGen,
+    s1MinSeeds: opts.s1MinSeeds,
+    s3MinSeeds: opts.s3MinSeeds,
+  });
+
+  return { perSeed, idleSlope1000, ...aggregate };
 }
 
 // Guard against CLI execution during test imports
@@ -436,21 +511,30 @@ if (process.argv[1]?.endsWith("formal.ts") || process.argv[1]?.endsWith("formal.
     writeFileSync(outFile, JSON.stringify(report, null, 2));
 
     console.log(`=== S-Gates: ${arm} (exempt from S1-S3: ${report.exempt}) ===`);
-    console.log("seed              survived  maxGen  s2Ratio1000  s3MaxIdleRun  s4ZodValid  s5BeliefCapOk");
+    console.log(
+      "seed              survived  maxGen  s2Ratio1000  s3MaxIdleRun  terminalIdle1000  s4ZodValid  s5BeliefCapOk",
+    );
     for (const s of report.perSeed) {
       console.log(
         `${s.seedRoot.padEnd(17)} ${String(s.survived).padEnd(9)} ${String(s.maxGeneration).padEnd(7)} ` +
           `${String(s.s2Ratio1000).padEnd(12)} ${String(s.s3MaxConsecutiveIdleBreaches).padEnd(13)} ` +
-          `${String(s.s4ZodValid).padEnd(11)} ${s.s5BeliefCapOk}`,
+          `${String(s.terminalIdle1000).padEnd(17)} ${String(s.s4ZodValid).padEnd(11)} ${s.s5BeliefCapOk}`,
       );
     }
     console.log(
       `\nS1 survival (${report.s1PassingSeeds}/${report.perSeed.length}): ${report.s1Pass ? "PASS" : "FAIL"}`,
     );
     console.log(`S2 no monoculture:       ${report.s2Pass ? "PASS" : "FAIL"}`);
-    console.log(`S3 world stays active:   ${report.s3Pass ? "PASS" : "FAIL"}`);
+    console.log(
+      `S3 world stays active (terminal-phase, ${report.s3PassingSeeds}/${report.perSeed.length}): ` +
+        `${report.s3Pass ? "PASS" : "FAIL"}  (s3MaxIdleRun column is a reported diagnostic, not the gate)`,
+    );
     console.log(`S4 mutation bounds hold: ${report.s4Pass ? "PASS" : "FAIL"}`);
     console.log(`S5 belief system bounded:${report.s5Pass ? "PASS" : "FAIL"}`);
+    console.log("\nidle slope (first10 -> last10, per seed, report-only):");
+    for (const slope of report.idleSlope1000) {
+      console.log(`  ${slope.seedRoot.padEnd(17)} ${slope.firstTen} -> ${slope.lastTen}`);
+    }
     console.log(`\nOutput: ${outFile}`);
   } else if (subcommand === "novelty") {
     const armArg = arg("arm", "");

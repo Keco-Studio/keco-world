@@ -186,6 +186,25 @@ describe("applyAction2", () => {
       npc.carry.berry = 5;
       expect(applyAction2(s, manifest, npc, { verb: "deposit", buildingId: "nope" })).toBe(false);
     });
+    it("legal: correct buildingId for the granary standing on succeeds", () => {
+      const { s, npc } = fresh();
+      npc.carry.berry = 5;
+      const b = granaryAt(npc.lineageId, 0);
+      s.buildings.push(b);
+      expect(applyAction2(s, manifest, npc, { verb: "deposit", buildingId: b.id })).toBe(true);
+      expect(npc.carry.berry).toBe(0);
+      expect(b.store.berry).toBe(5);
+    });
+    it("illegal: wrong buildingId while standing on a valid own-lineage granary (audit record must be checkable)", () => {
+      const { s, npc } = fresh();
+      npc.carry.berry = 5;
+      const b = granaryAt(npc.lineageId, 0);
+      s.buildings.push(b);
+      // A fabricated id that doesn't match the granary actually occupied.
+      expect(applyAction2(s, manifest, npc, { verb: "deposit", buildingId: "fabricated-id" })).toBe(false);
+      expect(npc.carry.berry).toBe(5);
+      expect(b.store.berry).toBe(0);
+    });
     it("legal, capped by GRANARY_CAP: transfers only up to remaining room", () => {
       const { s, npc } = fresh();
       npc.carry.berry = 5;
@@ -223,6 +242,15 @@ describe("applyAction2", () => {
       expect(carryTotal(npc.carry)).toBe(CARRY_CAP);
       expect(npc.carry.berry).toBe(CARRY_CAP - 3 + 3);
       expect(s.buildings[0]!.store.berry).toBe(17);
+    });
+    it("illegal: wrong buildingId while standing on a valid own-lineage granary (audit record must be checkable)", () => {
+      const { s, npc } = fresh();
+      npc.carry = { berry: 0, wood: 0, stone: 0, gold: 0 };
+      const b = granaryAt(npc.lineageId, 10);
+      s.buildings.push(b);
+      expect(applyAction2(s, manifest, npc, { verb: "withdraw", buildingId: "fabricated-id" })).toBe(false);
+      expect(npc.carry.berry).toBe(0);
+      expect(b.store.berry).toBe(10);
     });
     it("illegal: zero transfer when granary is empty", () => {
       const { s, npc } = fresh();

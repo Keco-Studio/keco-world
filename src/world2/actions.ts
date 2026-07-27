@@ -56,7 +56,7 @@ export function applyAction2(
     }
     case "deposit": {
       const b = lineageGranaryAt(state, npc.pos, npc.lineageId);
-      if (b === null) return false;
+      if (b === null || b.id !== action.buildingId) return false;
       const amount = Math.min(npc.carry.berry, GRANARY_CAP - carryTotal(b.store));
       if (amount <= 0) return false;
       npc.carry.berry -= amount;
@@ -65,7 +65,7 @@ export function applyAction2(
     }
     case "withdraw": {
       const b = lineageGranaryAt(state, npc.pos, npc.lineageId);
-      if (b === null) return false;
+      if (b === null || b.id !== action.buildingId) return false;
       const amount = Math.min(b.store.berry, CARRY_CAP - carryTotal(npc.carry));
       if (amount <= 0) return false;
       b.store.berry -= amount;

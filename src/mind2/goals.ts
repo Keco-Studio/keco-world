@@ -1,4 +1,4 @@
-import type { GoalKey, W2Policy, W2Manifest, W2Identity } from "../schema/world2.js";
+import type { GoalKey, W2Policy, W2Manifest, W2Identity, W2Belief } from "../schema/world2.js";
 import { SHELTER_NEED_RADIUS } from "../schema/world2.js";
 import type { W2Observation } from "./observe.js";
 import type { W2NpcState } from "../world2/state.js";
@@ -166,4 +166,38 @@ export function chooseGoal(
   }
 
   return { key: current.key, switched: false, source };
+}
+
+/**
+ * applyBeliefs2 (Task 6). Structurally identical to v1's src/mind/beliefs.ts
+ * `applyBeliefs`: a confidence-scaled, season-gated overlay applied to a copy
+ * of `policy` (never mutates inputs). The only difference from v1 is the
+ * target namespace: "w:<key>" maps into `goalWeights[key]` (GoalKey, not
+ * UtilityKey) and "t:hungerUrgent" maps into `thresholds.hungerUrgent`.
+ * `deliberationEpsilon`/`commitmentThreshold` are carried through unchanged
+ * (no belief target reaches them).
+ */
+export function applyBeliefs2(policy: W2Policy, beliefs: W2Belief[], season: "summer" | "winter"): W2Policy {
+  const result: W2Policy = {
+    goalWeights: { ...policy.goalWeights },
+    thresholds: { ...policy.thresholds },
+    deliberationEpsilon: policy.deliberationEpsilon,
+    commitmentThreshold: policy.commitmentThreshold,
+  };
+
+  for (const belief of beliefs) {
+    if (belief.effect.condition !== null && belief.effect.condition !== season) continue;
+
+    const delta = Math.floor((belief.effect.modifier * belief.confidence) / 1000);
+    const target = belief.effect.target;
+    if (target.startsWith("w:")) {
+      const key = target.slice(2) as GoalKey;
+      result.goalWeights[key] = Math.max(0, Math.min(1000, result.goalWeights[key] + delta));
+    } else if (target.startsWith("t:")) {
+      const key = target.slice(2) as keyof W2Policy["thresholds"];
+      result.thresholds[key] = Math.max(0, Math.min(1000, result.thresholds[key] + delta));
+    }
+  }
+
+  return result;
 }

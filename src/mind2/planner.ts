@@ -78,10 +78,29 @@ function gatherPath(
   const target = nearestRemembered(npc.memory, kind, npc.pos);
   if (target === null) return exploreStep(npc.pos, manifest, seedRoot, npc.npcId, obs.tick);
   if (chebyshev2(npc.pos, target.pos) <= 1) {
+    // Bug fix (Task 6, found while wiring engine2): a full carry makes `gather`
+    // illegal per applyAction2's own precondition (carryTotal < CARRY_CAP), but this
+    // path used to emit it unconditionally whenever an in-range remembered site
+    // existed, regardless of carry headroom. That's not just a theoretical edge case:
+    // build goals (planBuildGoal below) route here to fetch the single resource with
+    // the largest recipe gap, and nothing stops the carry from being pinned at
+    // CARRY_CAP by *other* resource types already held (e.g. mid-recipe leftovers
+    // after a goal switch, or monument's own gold+stone recipe totaling 11 > the
+    // frozen CARRY_CAP of 10 — see the Task 6 report). Idle is the only legal
+    // fallback here: nothing in the action set can shed non-berry carry.
+    if (carryTotal(npc.carry) >= CARRY_CAP) return { verb: "idle" };
     const site = obs.visibleSites.find(
       (s) => s.kind === kind && s.pos.x === target.pos.x && s.pos.y === target.pos.y,
     );
-    if (site !== undefined) return { verb: "gather", siteId: site.id };
+    if (site !== undefined && site.stock > 0) return { verb: "gather", siteId: site.id };
+    // Site remembered with stale stock but currently empty in this tick's
+    // real-time observation (also depleted between two live-decision calls
+    // this tick, or not actually present at that exact spot) -- also illegal
+    // to gather; idle rather than crash. Memory was already refreshed this
+    // tick (updateMemory runs before planAction), so the next decision
+    // naturally routes elsewhere once the gate in scoreGoals/nearestRemembered
+    // sees the corrected lastStock.
+    return { verb: "idle" };
   }
   return moveToward2(npc.pos, target.pos);
 }

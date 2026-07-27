@@ -1,5 +1,4 @@
-import type { W2Manifest, W2Identity, W2Policy, W2Belief, MemoryEntry } from "../schema/world2.js";
-import type { SemanticEvent } from "../schema/log.js";
+import type { W2Manifest, W2Identity, W2Policy, W2Belief, MemoryEntry, W2SemanticEvent } from "../schema/world2.js";
 import type { W2WorldState, W2NpcState } from "./state.js";
 import { seasonAt2, chebyshev2, npcAge2, shelterAt } from "./state.js";
 import { drawInt } from "../rng/rng.js";
@@ -47,7 +46,7 @@ export function environmentStep2(
   state: W2WorldState,
   manifest: W2Manifest,
   seedRoot: string,
-  events: SemanticEvent[],
+  events: W2SemanticEvent[],
 ): void {
   const season = seasonAt2(state.tick, manifest);
   for (const site of state.sites) {
@@ -74,7 +73,7 @@ export function environmentStep2(
 }
 
 /** Energy drain, starvation, shelter-gated cold, senescence, regen, death. Runs after NPC actions each tick. */
-export function needsStep2(state: W2WorldState, manifest: W2Manifest, events: SemanticEvent[]): void {
+export function needsStep2(state: W2WorldState, manifest: W2Manifest, events: W2SemanticEvent[]): void {
   const season = seasonAt2(state.tick, manifest);
   for (const npc of state.npcs) {
     if (!npc.alive) continue;
@@ -133,7 +132,7 @@ export function reproductionStep2(
   state: W2WorldState,
   manifest: W2Manifest,
   seedRoot: string,
-  events: SemanticEvent[],
+  events: W2SemanticEvent[],
   breedFn: BreedFn2,
 ): void {
   const paired = new Set<string>(); // track paired npcIds this tick

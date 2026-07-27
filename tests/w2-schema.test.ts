@@ -11,7 +11,7 @@ describe("w2 schema", () => {
     expect(W2PolicyS.safeParse({ ...ok, goalWeights: { ...weights, forage: 100 } }).success).toBe(false);
   });
   it("freezes the recipes", () => {
-    expect(RECIPES).toEqual({ shelter: { wood: 4, stone: 2 }, granary: { wood: 6, stone: 4 }, monument: { gold: 3, stone: 8 } });
+    expect(RECIPES).toEqual({ shelter: { wood: 4, stone: 2 }, granary: { wood: 6, stone: 4 }, monument: { gold: 3, stone: 7 } });
   });
   it("manifest has no shelters field and pins the schema version", () => {
     expect(SCHEMA_VERSION_W2).toBe("world2-v1");

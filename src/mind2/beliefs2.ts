@@ -1,5 +1,4 @@
-import type { W2Belief } from "../schema/world2.js";
-import type { SemanticEvent } from "../schema/log.js";
+import type { W2Belief, W2SemanticEvent } from "../schema/world2.js";
 import type { W2WorldState, W2NpcState } from "../world2/state.js";
 
 /**
@@ -30,7 +29,7 @@ export function decayBeliefs2(npc: W2NpcState, tick: number): void {
 }
 
 /** Event-driven formation for THIS tick's semantic events. Emits belief_formed events. */
-export function beliefFormationStep2(state: W2WorldState, events: SemanticEvent[], tickEvents: SemanticEvent[]): void {
+export function beliefFormationStep2(state: W2WorldState, events: W2SemanticEvent[], tickEvents: W2SemanticEvent[]): void {
   for (const event of tickEvents) {
     if (event.kind === "wolf_attack") {
       const npc = state.npcs.find((n) => n.npcId === event.npcId);
@@ -80,7 +79,7 @@ export function beliefFormationStep2(state: W2WorldState, events: SemanticEvent[
 }
 
 /** Helper: reinforce-or-add a belief. Mutates npc.beliefs and emits belief_formed event if new. */
-function reinforceOrAdd2(npc: W2NpcState, belief: W2Belief, tick: number, events: SemanticEvent[]): void {
+function reinforceOrAdd2(npc: W2NpcState, belief: W2Belief, tick: number, events: W2SemanticEvent[]): void {
   const target = belief.effect.target;
   const modifierSign = Math.sign(belief.effect.modifier);
   const existingIndex = npc.beliefs.findIndex(

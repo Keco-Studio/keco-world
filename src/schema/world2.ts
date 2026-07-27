@@ -11,7 +11,7 @@ export type GoalKey = (typeof GOAL_KEYS)[number];
 export const RECIPES: Record<BuildingKind, Partial<Record<ResourceKind, number>>> = {
   shelter: { wood: 4, stone: 2 },
   granary: { wood: 6, stone: 4 },
-  monument: { gold: 3, stone: 8 },
+  monument: { gold: 3, stone: 7 },
 };
 export const GRID = 64,
   VISION_RADIUS = 8,
@@ -180,3 +180,29 @@ export const W2ManifestS = z
   })
   .strict();
 export type W2Manifest = z.infer<typeof W2ManifestS>;
+
+// W2SemanticEvent: world2's own event vocabulary (Task 6 fix). v1's
+// SemanticEvent (src/schema/log.ts) is frozen and its `kind` enum has no
+// construction-event kind; rather than bending v1's vocabulary to fit (which
+// would mislabel events in the audit record), world2 gets its own semantic
+// event type mirroring v1's shape, sized to what engine2 actually emits.
+export const W2_EVENT_KINDS = [
+  "season_change",
+  "birth",
+  "death",
+  "wolf_attack",
+  "starving",
+  "belief_formed",
+  "building_built",
+] as const;
+export type W2EventKind = (typeof W2_EVENT_KINDS)[number];
+
+export const W2SemanticEventS = z
+  .object({
+    tick: Int.min(0),
+    kind: z.enum(W2_EVENT_KINDS),
+    npcId: z.string().nullable(),
+    data: z.record(z.string(), z.union([z.string(), Int, z.null(), Vec2S])),
+  })
+  .strict();
+export type W2SemanticEvent = z.infer<typeof W2SemanticEventS>;

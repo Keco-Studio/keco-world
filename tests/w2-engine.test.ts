@@ -5,7 +5,7 @@ import { breed2 } from "../src/life/genome2.js";
 import { hashCanonical } from "../src/canon/canonicalize.js";
 import { createW2InitialState } from "../src/world2/state.js";
 import { makeW2TestManifest, makeW2TestRoster } from "./w2-helpers.js";
-import { GOAL_KEYS, type GoalKey } from "../src/schema/world2.js";
+import { GOAL_KEYS, W2_EVENT_KINDS, BUILDING_KINDS, type GoalKey } from "../src/schema/world2.js";
 import type { W2Genome2 } from "../src/world2/rules.js";
 
 const manifest = makeW2TestManifest();
@@ -148,6 +148,29 @@ describe("engine2", () => {
       expect(child.memory.length).toBeLessThanOrEqual(6);
       expect(child.lineageId).toBe(a.lineageId);
       expect(child.generation).toBe(1);
+    }
+  });
+
+  it("emits building_built as a world2-native event (not borrowed from v1's kind vocabulary), with buildingKind + pos in data", () => {
+    const roster = makeW2TestRoster("engine2-buildtest");
+    const r = runSim2(manifest, roster, "engine2-buildtest", { ticks: 4000 });
+
+    // Every event this engine emits must be a real w2 kind, never a v1-only kind
+    // (the old workaround reused v1's "patron_set" for building_built; that must
+    // no longer happen now that world2 has its own event vocabulary).
+    for (const ev of r.events) {
+      expect(W2_EVENT_KINDS).toContain(ev.kind);
+      expect(ev.kind).not.toBe("patron_set");
+    }
+
+    const builtEvents = r.events.filter((e) => e.kind === "building_built");
+    expect(builtEvents.length).toBeGreaterThan(0);
+    for (const ev of builtEvents) {
+      expect(typeof ev.npcId).toBe("string"); // the owner, not null
+      expect(BUILDING_KINDS).toContain(ev.data.buildingKind);
+      const pos = ev.data.pos as { x: number; y: number };
+      expect(Number.isInteger(pos.x)).toBe(true);
+      expect(Number.isInteger(pos.y)).toBe(true);
     }
   });
 

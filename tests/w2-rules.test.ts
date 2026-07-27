@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createW2InitialState, seasonAt2, shelterAt } from "../src/world2/state.js";
 import { environmentStep2, needsStep2, reproductionStep2 } from "../src/world2/rules.js";
 import type { W2Genome2 } from "../src/world2/rules.js";
-import type { SemanticEvent } from "../src/schema/log.js";
+import type { W2SemanticEvent } from "../src/schema/world2.js";
 import { makeW2TestManifest, makeW2TestRoster } from "./w2-helpers.js";
 
 describe("w2 rules", () => {
@@ -95,7 +95,7 @@ describe("w2 rules", () => {
     };
 
     const beforeCount = s.npcs.length;
-    const events: SemanticEvent[] = [];
+    const events: W2SemanticEvent[] = [];
     reproductionStep2(s, m, "r4", events, stubBreed);
 
     expect(calls).toBe(1);

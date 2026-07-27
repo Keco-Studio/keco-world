@@ -1,5 +1,4 @@
-import type { W2Manifest, W2RosterEntry, GoalKey } from "../schema/world2.js";
-import type { SemanticEvent } from "../schema/log.js";
+import type { W2Manifest, W2RosterEntry, GoalKey, W2SemanticEvent } from "../schema/world2.js";
 import type { W2WorldState } from "../world2/state.js";
 import { createW2InitialState, seasonAt2 } from "../world2/state.js";
 import { environmentStep2, needsStep2, reproductionStep2 } from "../world2/rules.js";
@@ -53,7 +52,7 @@ export interface RunResult2 {
   finalState: W2WorldState;
   actionLog: W2ActionEvent[];
   checkpoints: { tick: number; stateHash: string }[];
-  events: SemanticEvent[];
+  events: W2SemanticEvent[];
   tickHashes: { tick: number; stateHash: string }[];
   haltedAtTick: number | null;
 }
@@ -68,7 +67,7 @@ export function runFromState2(
   const state = structuredClone(initial);
   const actionLog: W2ActionEvent[] = [];
   const checkpoints: RunResult2["checkpoints"] = [];
-  const events: SemanticEvent[] = [];
+  const events: W2SemanticEvent[] = [];
   const tickHashes: RunResult2["tickHashes"] = [];
   let lastEventHash: string | null = null;
   let haltedAtTick: number | null = null;
@@ -164,24 +163,16 @@ export function runFromState2(
         actionLog.push(event);
       }
 
-      // building_built: v1's SemanticEvent kind enum (src/schema/log.ts, frozen) has no
-      // construction-event kind, and that file may not be edited. Of its 7 kinds, 6
-      // ("death"/"wolf_attack"/"starving"/"season_change"/"birth"/"belief_formed") are
-      // all legitimately produced elsewhere in this very engine, so repurposing any of
-      // them would make `events.filter(e => e.kind === X)` ambiguous between a real w2
-      // event and a relabeled building-built event. "patron_set" is the one kind engine2
-      // never legitimately produces (the patron mechanism is v1/arms-only, absent from
-      // w2's design entirely), so it's the only repurposing that can't collide with a
-      // genuine same-kind event in the same stream. See the Task 6 report for the
-      // consequence: consumers must disambiguate by `data` shape (a `buildingKind` key)
-      // rather than by `kind` alone, and a future schema revision should give w2 its own
-      // event-kind union instead of reusing v1's frozen one.
+      // building_built: world2 has its own semantic event vocabulary (W2SemanticEventS,
+      // src/schema/world2.ts) precisely so this doesn't need to borrow or relabel a v1
+      // event kind. npcId carries the owner (matching every other w2 event's npcId
+      // convention); data carries the building kind and the built-at position.
       if (action.verb === "build") {
         events.push({
           tick: t,
-          kind: "patron_set",
+          kind: "building_built",
           npcId: npc.npcId,
-          data: { buildingKind: action.kind, posX: npc.pos.x, posY: npc.pos.y },
+          data: { buildingKind: action.kind, pos: { x: npc.pos.x, y: npc.pos.y } },
         });
       }
     }

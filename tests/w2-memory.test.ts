@@ -41,19 +41,27 @@ function baseObs(overrides: Partial<W2Observation>): W2Observation {
 describe("updateMemory", () => {
   it("refreshes an existing entry with the same pos and kind instead of duplicating it", () => {
     const npc = makeNpc();
-    npc.memory = [{ kind: "berry", pos: { x: 5, y: 5 }, lastStock: 2, seenTick: 10 }];
+    npc.memory = [{ kind: "berry", pos: { x: 5, y: 5 }, lastStock: 2, seenTick: 10, ownerLineageId: null }];
     const obs = baseObs({
       tick: 20,
       visibleSites: [{ id: "berry-9-0", kind: "berry", pos: { x: 5, y: 5 }, stock: 9, dist: 0 }],
     });
     updateMemory(npc, obs);
     expect(npc.memory.length).toBe(1);
-    expect(npc.memory[0]).toEqual({ kind: "berry", pos: { x: 5, y: 5 }, lastStock: 9, seenTick: 20 });
+    expect(npc.memory[0]).toEqual({
+      kind: "berry",
+      pos: { x: 5, y: 5 },
+      lastStock: 9,
+      seenTick: 20,
+      ownerLineageId: null,
+    });
   });
 
-  it("refreshes a building entry, always with lastStock = 1", () => {
+  it("refreshes a building entry, always with lastStock = 1, and updates ownerLineageId", () => {
     const npc = makeNpc();
-    npc.memory = [{ kind: "granary", pos: { x: 3, y: 3 }, lastStock: 1, seenTick: 5 }];
+    npc.memory = [
+      { kind: "granary", pos: { x: 3, y: 3 }, lastStock: 1, seenTick: 5, ownerLineageId: "npc-1" },
+    ];
     const obs = baseObs({
       tick: 30,
       visibleBuildings: [
@@ -62,12 +70,18 @@ describe("updateMemory", () => {
     });
     updateMemory(npc, obs);
     expect(npc.memory.length).toBe(1);
-    expect(npc.memory[0]).toEqual({ kind: "granary", pos: { x: 3, y: 3 }, lastStock: 1, seenTick: 30 });
+    expect(npc.memory[0]).toEqual({
+      kind: "granary",
+      pos: { x: 3, y: 3 },
+      lastStock: 1,
+      seenTick: 30,
+      ownerLineageId: "npc-1",
+    });
   });
 
   it("does not duplicate when a different-kind entry occupies the same pos", () => {
     const npc = makeNpc();
-    npc.memory = [{ kind: "berry", pos: { x: 5, y: 5 }, lastStock: 2, seenTick: 10 }];
+    npc.memory = [{ kind: "berry", pos: { x: 5, y: 5 }, lastStock: 2, seenTick: 10, ownerLineageId: null }];
     const obs = baseObs({
       tick: 20,
       // same pos, different kind (a building was built where a site once stood, e.g.) -> distinct entry
@@ -146,6 +160,7 @@ describe("inheritMemory", () => {
       pos: { x: 10 + i, y: 20 + i },
       lastStock: i,
       seenTick: i, // strictly increasing, so ranking by seenTick is unambiguous
+      ownerLineageId: null,
     }));
   }
 
@@ -177,8 +192,26 @@ describe("inheritMemory", () => {
     expect(inheritMemory([], "child-empty", seedRoot, 1)).toEqual([]);
   });
 
+  it("preserves ownerLineageId through inheritance (untouched by misremembering, which only jitters position)", () => {
+    const parent: MemoryEntry[] = [
+      { kind: "granary", pos: { x: 15, y: 15 }, lastStock: 1, seenTick: 5, ownerLineageId: "lineage-a" },
+      { kind: "berry", pos: { x: 16, y: 16 }, lastStock: 3, seenTick: 4, ownerLineageId: null },
+    ];
+    const result = inheritMemory(parent, "child-owner", seedRoot, 100);
+    const granaryEntry = result.find((e) => e.kind === "granary");
+    const berryEntry = result.find((e) => e.kind === "berry");
+    expect(granaryEntry?.ownerLineageId).toBe("lineage-a");
+    expect(berryEntry?.ownerLineageId).toBeNull();
+  });
+
   it("misremember rate is within 8%-12% over 2000 samples, jitter never exceeds +/-2 and stays in bounds, non-misremembered entries are preserved byte-for-byte", () => {
-    const original: MemoryEntry = { kind: "wood", pos: { x: 30, y: 30 }, lastStock: 4, seenTick: 0 };
+    const original: MemoryEntry = {
+      kind: "wood",
+      pos: { x: 30, y: 30 },
+      lastStock: 4,
+      seenTick: 0,
+      ownerLineageId: null,
+    };
     const N = 2000;
     let misrememberedCount = 0;
     let sawExactPreservationCheck = false;
@@ -218,8 +251,8 @@ describe("inheritMemory", () => {
 
   it("clamps jittered positions to [0, GRID-1] near the grid edges", () => {
     const corners: MemoryEntry[] = [
-      { kind: "stone", pos: { x: 0, y: 0 }, lastStock: 1, seenTick: 0 },
-      { kind: "gold", pos: { x: GRID - 1, y: GRID - 1 }, lastStock: 1, seenTick: 0 },
+      { kind: "stone", pos: { x: 0, y: 0 }, lastStock: 1, seenTick: 0, ownerLineageId: null },
+      { kind: "gold", pos: { x: GRID - 1, y: GRID - 1 }, lastStock: 1, seenTick: 0, ownerLineageId: null },
     ];
     for (let s = 0; s < 500; s++) {
       const childKey = `corner-${s}`;

@@ -103,7 +103,7 @@ describe("planAction: eat", () => {
 
   it("does not withdraw from an empty granary; falls through to gathering", () => {
     const npc = makeNpc({
-      memory: [{ kind: "berry", pos: { x: 11, y: 10 }, lastStock: 3, seenTick: 0 }],
+      memory: [{ kind: "berry", pos: { x: 11, y: 10 }, lastStock: 3, seenTick: 0, ownerLineageId: null }],
     });
     const obs = makeObs({
       visibleBuildings: [granaryBuilding({ storeBerry: 0 })],
@@ -114,7 +114,7 @@ describe("planAction: eat", () => {
 
   it("gathers the nearest remembered berry site when adjacent", () => {
     const npc = makeNpc({
-      memory: [{ kind: "berry", pos: { x: 11, y: 10 }, lastStock: 3, seenTick: 0 }],
+      memory: [{ kind: "berry", pos: { x: 11, y: 10 }, lastStock: 3, seenTick: 0, ownerLineageId: null }],
     });
     const obs = makeObs({
       visibleSites: [{ id: "berry-0-0", kind: "berry", pos: { x: 11, y: 10 }, stock: 3, dist: 1 }],
@@ -124,7 +124,7 @@ describe("planAction: eat", () => {
 
   it("moves toward the nearest remembered berry site when not adjacent (diagonal sign step)", () => {
     const npc = makeNpc({
-      memory: [{ kind: "berry", pos: { x: 13, y: 10 }, lastStock: 3, seenTick: 0 }],
+      memory: [{ kind: "berry", pos: { x: 13, y: 10 }, lastStock: 3, seenTick: 0, ownerLineageId: null }],
     });
     const obs = makeObs();
     expect(planAction("eat", obs, npc, manifest, SEED)).toEqual({ verb: "move", to: { x: 11, y: 10 } });
@@ -133,9 +133,9 @@ describe("planAction: eat", () => {
   it("picks the nearest remembered site, tie-broken by pos.x then pos.y, and skips lastStock===0 entries", () => {
     const npc = makeNpc({
       memory: [
-        { kind: "berry", pos: { x: 10, y: 10 }, lastStock: 0, seenTick: 0 }, // depleted, skipped
-        { kind: "berry", pos: { x: 12, y: 9 }, lastStock: 1, seenTick: 0 }, // dist 2, x=12
-        { kind: "berry", pos: { x: 9, y: 12 }, lastStock: 1, seenTick: 0 }, // dist 2, x=9 (wins tie: lower x)
+        { kind: "berry", pos: { x: 10, y: 10 }, lastStock: 0, seenTick: 0, ownerLineageId: null }, // depleted, skipped
+        { kind: "berry", pos: { x: 12, y: 9 }, lastStock: 1, seenTick: 0, ownerLineageId: null }, // dist 2, x=12
+        { kind: "berry", pos: { x: 9, y: 12 }, lastStock: 1, seenTick: 0, ownerLineageId: null }, // dist 2, x=9 (wins tie: lower x)
       ],
     });
     const obs = makeObs();
@@ -172,7 +172,7 @@ describe("planAction: eat", () => {
 describe("planAction: stockpile", () => {
   it("gathers berries (eat's acquisition path) while under CARRY_CAP", () => {
     const npc = makeNpc({
-      memory: [{ kind: "berry", pos: { x: 11, y: 10 }, lastStock: 3, seenTick: 0 }],
+      memory: [{ kind: "berry", pos: { x: 11, y: 10 }, lastStock: 3, seenTick: 0, ownerLineageId: null }],
     });
     const obs = makeObs({
       visibleSites: [{ id: "berry-0-0", kind: "berry", pos: { x: 11, y: 10 }, stock: 3, dist: 1 }],
@@ -189,13 +189,51 @@ describe("planAction: stockpile", () => {
     expect(planAction("stockpile", obs, npc, manifest, SEED)).toEqual({ verb: "deposit", buildingId: "gr-1" });
   });
 
-  it("moves toward the remembered granary when the bag is full and not there yet", () => {
+  it("moves toward the remembered own-lineage granary when the bag is full and not there yet", () => {
     const npc = makeNpc({
       carry: { berry: 10, wood: 0, stone: 0, gold: 0 },
-      memory: [{ kind: "granary", pos: { x: 13, y: 10 }, lastStock: 1, seenTick: 0 }],
+      memory: [
+        { kind: "granary", pos: { x: 13, y: 10 }, lastStock: 1, seenTick: 0, ownerLineageId: "npc-1" },
+      ],
     });
     const obs = makeObs({ self: { ...makeObs().self, carry: { berry: 10, wood: 0, stone: 0, gold: 0 } } });
     expect(planAction("stockpile", obs, npc, manifest, SEED)).toEqual({ verb: "move", to: { x: 11, y: 10 } });
+  });
+
+  it("navigates home from memory even when the granary is far outside vision range (the fix under test)", () => {
+    // The granary is nowhere near obs (not in visibleBuildings at all -- e.g. many tiles
+    // away, well past visionRadius) but the NPC still remembers where its own lineage's
+    // granary is. A full carry must still produce a move toward it, not an explore step.
+    const npc = makeNpc({
+      pos: { x: 0, y: 0 },
+      carry: { berry: 10, wood: 0, stone: 0, gold: 0 },
+      memory: [
+        { kind: "granary", pos: { x: 60, y: 60 }, lastStock: 1, seenTick: 0, ownerLineageId: "npc-1" },
+      ],
+    });
+    const obs = makeObs({
+      self: { ...makeObs().self, pos: { x: 0, y: 0 }, carry: { berry: 10, wood: 0, stone: 0, gold: 0 } },
+      visibleBuildings: [], // granary is not currently visible
+    });
+    expect(planAction("stockpile", obs, npc, manifest, SEED)).toEqual({ verb: "move", to: { x: 1, y: 1 } });
+  });
+
+  it("ignores a foreign lineage's remembered granary when navigating home to deposit", () => {
+    const npc = makeNpc({
+      carry: { berry: 10, wood: 0, stone: 0, gold: 0 },
+      memory: [
+        { kind: "granary", pos: { x: 13, y: 10 }, lastStock: 1, seenTick: 0, ownerLineageId: "other-lineage" },
+      ],
+    });
+    const obs = makeObs({ self: { ...makeObs().self, carry: { berry: 10, wood: 0, stone: 0, gold: 0 } }, tick: 77 });
+    // No own-lineage granary in memory -> falls through to the exploration step, exactly
+    // like having no granary remembered at all.
+    const dir = DIRS[drawInt(SEED, 8, "w2-explore", "npc-1", 77)]!;
+    const to = { x: 10 + dir.x, y: 10 + dir.y };
+    const inBounds = to.x >= 0 && to.x < manifest.gridWidth && to.y >= 0 && to.y < manifest.gridHeight;
+    expect(planAction("stockpile", obs, npc, manifest, SEED)).toEqual(
+      inBounds ? { verb: "move", to } : { verb: "idle" },
+    );
   });
 
   it("explores when the bag is full and no granary is remembered or visible", () => {
@@ -212,13 +250,13 @@ describe("planAction: stockpile", () => {
 
 describe("planAction: takeShelter", () => {
   it("idles when already on a shelter", () => {
-    const npc = makeNpc({ memory: [{ kind: "shelter", pos: { x: 20, y: 20 }, lastStock: 1, seenTick: 0 }] });
+    const npc = makeNpc({ memory: [{ kind: "shelter", pos: { x: 20, y: 20 }, lastStock: 1, seenTick: 0, ownerLineageId: null }] });
     const obs = makeObs({ onShelter: true });
     expect(planAction("takeShelter", obs, npc, manifest, SEED)).toEqual({ verb: "idle" });
   });
 
   it("moves toward the nearest remembered shelter otherwise", () => {
-    const npc = makeNpc({ memory: [{ kind: "shelter", pos: { x: 12, y: 10 }, lastStock: 1, seenTick: 0 }] });
+    const npc = makeNpc({ memory: [{ kind: "shelter", pos: { x: 12, y: 10 }, lastStock: 1, seenTick: 0, ownerLineageId: null }] });
     const obs = makeObs({ onShelter: false });
     expect(planAction("takeShelter", obs, npc, manifest, SEED)).toEqual({ verb: "move", to: { x: 11, y: 10 } });
   });
@@ -247,7 +285,7 @@ describe("planAction: build goals (shelterBuild / granaryBuild / monumentBuild)"
     // granaryBuild recipe: wood:6, stone:4. carry wood:5 (gap1), stone:0 (gap4) -> stone wins.
     const npc = makeNpc({
       carry: { berry: 0, wood: 5, stone: 0, gold: 0 },
-      memory: [{ kind: "stone", pos: { x: 11, y: 10 }, lastStock: 5, seenTick: 0 }],
+      memory: [{ kind: "stone", pos: { x: 11, y: 10 }, lastStock: 5, seenTick: 0, ownerLineageId: null }],
     });
     const obs = makeObs({
       visibleSites: [{ id: "stone-0-0", kind: "stone", pos: { x: 11, y: 10 }, stock: 5, dist: 1 }],
@@ -260,8 +298,8 @@ describe("planAction: build goals (shelterBuild / granaryBuild / monumentBuild)"
     const npc = makeNpc({
       carry: { berry: 0, wood: 2, stone: 0, gold: 0 },
       memory: [
-        { kind: "wood", pos: { x: 11, y: 10 }, lastStock: 5, seenTick: 0 },
-        { kind: "stone", pos: { x: 9, y: 10 }, lastStock: 5, seenTick: 0 },
+        { kind: "wood", pos: { x: 11, y: 10 }, lastStock: 5, seenTick: 0, ownerLineageId: null },
+        { kind: "stone", pos: { x: 9, y: 10 }, lastStock: 5, seenTick: 0, ownerLineageId: null },
       ],
     });
     const obs = makeObs({
@@ -326,7 +364,7 @@ describe("planAction: build goals (shelterBuild / granaryBuild / monumentBuild)"
   it("monumentBuild uses the gold/stone recipe", () => {
     const npc = makeNpc({
       carry: { berry: 0, wood: 0, stone: 8, gold: 0 },
-      memory: [{ kind: "gold", pos: { x: 11, y: 10 }, lastStock: 2, seenTick: 0 }],
+      memory: [{ kind: "gold", pos: { x: 11, y: 10 }, lastStock: 2, seenTick: 0, ownerLineageId: null }],
     });
     const obs = makeObs({
       visibleSites: [{ id: "gold-0-0", kind: "gold", pos: { x: 11, y: 10 }, stock: 2, dist: 1 }],

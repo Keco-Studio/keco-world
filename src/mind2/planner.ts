@@ -10,16 +10,22 @@ import { drawInt } from "../rng/rng.js";
 
 /**
  * "Nearest remembered X": filter memory entries of the given kind with
- * lastStock > 0, sort by chebyshev2 distance from `from` ascending, tie-break
- * pos.x then pos.y ascending, return the first (or null if none qualify).
- * Frozen determinism detail from the Task 5 brief.
+ * lastStock > 0 (and, when `ownerLineageId` is given, matching ownership —
+ * used to find one's own lineage's granary from memory, since ownership
+ * can't be read off `obs.visibleBuildings` once out of vision range), sort
+ * by chebyshev2 distance from `from` ascending, tie-break pos.x then pos.y
+ * ascending, return the first (or null if none qualify). Frozen determinism
+ * detail from the Task 5 brief.
  */
 export function nearestRemembered(
   memory: MemoryEntry[],
   kind: ResourceKind | BuildingKind,
   from: Vec2,
+  ownerLineageId?: string,
 ): MemoryEntry | null {
-  const candidates = memory.filter((e) => e.kind === kind && e.lastStock > 0);
+  const candidates = memory.filter(
+    (e) => e.kind === kind && e.lastStock > 0 && (ownerLineageId === undefined || e.ownerLineageId === ownerLineageId),
+  );
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => {
     const da = chebyshev2(from, a.pos);
@@ -98,7 +104,9 @@ function planStockpile(obs: W2Observation, npc: W2NpcState, manifest: W2Manifest
   if (carryTotal(npc.carry) < CARRY_CAP) return gatherPath("berry", npc, obs, manifest, seedRoot);
   const granary = ownGranaryHere(obs);
   if (granary !== null) return { verb: "deposit", buildingId: granary.id };
-  const target = nearestRemembered(npc.memory, "granary", npc.pos);
+  // Navigate home from memory (ownership-filtered) so a full-carry NPC can find its
+  // way back even when the granary itself is currently out of vision range.
+  const target = nearestRemembered(npc.memory, "granary", npc.pos, npc.lineageId);
   if (target === null) return exploreStep(npc.pos, manifest, seedRoot, npc.npcId, obs.tick);
   return moveToward2(npc.pos, target.pos);
 }

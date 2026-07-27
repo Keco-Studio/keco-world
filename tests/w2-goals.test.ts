@@ -104,25 +104,46 @@ describe("scoreGoals gating", () => {
     expect(scoreGoals(fullObs, npc, npc.policy, manifest).some((s) => s.key === "eat")).toBe(true);
   });
 
-  it("stockpile only appears when the lineage has a visible granary", () => {
+  it("stockpile only appears when the lineage has a granary remembered (ownerLineageId match)", () => {
     const npc = makeNpc();
     const obsNoGranary = makeObs();
     expect(scoreGoals(obsNoGranary, npc, npc.policy, manifest).some((s) => s.key === "stockpile")).toBe(false);
 
-    const obsWithGranary = makeObs({ visibleBuildings: [granaryBuilding()] });
-    expect(scoreGoals(obsWithGranary, npc, npc.policy, manifest).some((s) => s.key === "stockpile")).toBe(true);
+    const npcWithGranaryMemory = makeNpc({
+      memory: [{ kind: "granary", pos: { x: 10, y: 10 }, lastStock: 1, seenTick: 0, ownerLineageId: "npc-1" }],
+    });
+    expect(
+      scoreGoals(makeObs(), npcWithGranaryMemory, npcWithGranaryMemory.policy, manifest).some(
+        (s) => s.key === "stockpile",
+      ),
+    ).toBe(true);
   });
 
-  it("a foreign lineage's granary does not satisfy stockpile/granaryBuild gates", () => {
-    const npc = makeNpc({ lineageId: "npc-1" });
-    const obs = makeObs({ visibleBuildings: [granaryBuilding({ ownerLineageId: "other-lineage" })] });
+  it("a granary remembered outside current vision still satisfies the stockpile/granaryBuild gates (does not re-trigger granaryBuild, does allow stockpile)", () => {
+    // The granary is far away -- not in obs.visibleBuildings at all -- but the NPC remembers it.
+    const npc = makeNpc({
+      memory: [{ kind: "granary", pos: { x: 60, y: 60 }, lastStock: 1, seenTick: 0, ownerLineageId: "npc-1" }],
+    });
+    const obs = makeObs({ visibleBuildings: [] }); // granary not currently visible
     const scored = scoreGoals(obs, npc, npc.policy, manifest);
+    expect(scored.some((s) => s.key === "granaryBuild")).toBe(false);
+    expect(scored.some((s) => s.key === "stockpile")).toBe(true);
+  });
+
+  it("a foreign lineage's granary in memory does not satisfy stockpile/granaryBuild gates", () => {
+    const npc = makeNpc({
+      lineageId: "npc-1",
+      memory: [{ kind: "granary", pos: { x: 10, y: 10 }, lastStock: 1, seenTick: 0, ownerLineageId: "other-lineage" }],
+    });
+    const scored = scoreGoals(makeObs(), npc, npc.policy, manifest);
     expect(scored.some((s) => s.key === "stockpile")).toBe(false);
     expect(scored.some((s) => s.key === "granaryBuild")).toBe(true);
   });
 
-  it("stockpile score uses foodSecurity including own-granary berries", () => {
-    const npc = makeNpc();
+  it("stockpile score uses foodSecurity including only currently-visible own-granary berries (not memory)", () => {
+    const npc = makeNpc({
+      memory: [{ kind: "granary", pos: { x: 10, y: 10 }, lastStock: 1, seenTick: 0, ownerLineageId: "npc-1" }],
+    });
     const w = { ...makePolicy().goalWeights, stockpile: 900 };
     const policy = makePolicy({ goalWeights: w });
     const obs = makeObs({
@@ -133,10 +154,23 @@ describe("scoreGoals gating", () => {
     const stockpile = scored.find((s) => s.key === "stockpile")!;
     const foodSecurity = Math.min(1000, (2 + 3) * 100);
     expect(stockpile.score).toBe(Math.floor((900 * (1000 - foodSecurity)) / 1000));
+
+    // Same npc/memory, but the granary is no longer visible this tick: foodSecurity
+    // drops to carry-only, even though the stockpile gate (memory-based) still holds.
+    const obsAway = makeObs({
+      self: { ...makeObs().self, carry: { berry: 2, wood: 0, stone: 0, gold: 0 } },
+      visibleBuildings: [],
+    });
+    const scoredAway = scoreGoals(obsAway, npc, policy, manifest);
+    const stockpileAway = scoredAway.find((s) => s.key === "stockpile")!;
+    const foodSecurityAway = Math.min(1000, 2 * 100);
+    expect(stockpileAway.score).toBe(Math.floor((900 * (1000 - foodSecurityAway)) / 1000));
   });
 
   it("takeShelter requires winter, not-on-shelter, and a remembered shelter", () => {
-    const npc = makeNpc({ memory: [{ kind: "shelter", pos: { x: 12, y: 10 }, lastStock: 1, seenTick: 0 }] });
+    const npc = makeNpc({
+      memory: [{ kind: "shelter", pos: { x: 12, y: 10 }, lastStock: 1, seenTick: 0, ownerLineageId: null }],
+    });
 
     // not winter -> absent
     expect(
@@ -168,12 +202,22 @@ describe("scoreGoals gating", () => {
 
   it("shelterBuild is gated off only by a remembered shelter within SHELTER_NEED_RADIUS", () => {
     const near = makeNpc({
-      memory: [{ kind: "shelter", pos: { x: 10 + SHELTER_NEED_RADIUS, y: 10 }, lastStock: 1, seenTick: 0 }],
+      memory: [
+        { kind: "shelter", pos: { x: 10 + SHELTER_NEED_RADIUS, y: 10 }, lastStock: 1, seenTick: 0, ownerLineageId: null },
+      ],
     });
     expect(scoreGoals(makeObs(), near, near.policy, manifest).some((s) => s.key === "shelterBuild")).toBe(false);
 
     const far = makeNpc({
-      memory: [{ kind: "shelter", pos: { x: 10 + SHELTER_NEED_RADIUS + 1, y: 10 }, lastStock: 1, seenTick: 0 }],
+      memory: [
+        {
+          kind: "shelter",
+          pos: { x: 10 + SHELTER_NEED_RADIUS + 1, y: 10 },
+          lastStock: 1,
+          seenTick: 0,
+          ownerLineageId: null,
+        },
+      ],
     });
     expect(scoreGoals(makeObs(), far, far.policy, manifest).some((s) => s.key === "shelterBuild")).toBe(true);
 
@@ -181,11 +225,23 @@ describe("scoreGoals gating", () => {
     expect(scoreGoals(makeObs(), none, none.policy, manifest).some((s) => s.key === "shelterBuild")).toBe(true);
   });
 
-  it("granaryBuild is gated off only by an own-lineage visible granary", () => {
+  it("granaryBuild is gated off only by an own-lineage granary remembered (visible or not)", () => {
     const npc = makeNpc();
     expect(scoreGoals(makeObs(), npc, npc.policy, manifest).some((s) => s.key === "granaryBuild")).toBe(true);
+
+    const npcWithGranaryMemory = makeNpc({
+      memory: [{ kind: "granary", pos: { x: 10, y: 10 }, lastStock: 1, seenTick: 0, ownerLineageId: "npc-1" }],
+    });
+    expect(
+      scoreGoals(makeObs(), npcWithGranaryMemory, npcWithGranaryMemory.policy, manifest).some(
+        (s) => s.key === "granaryBuild",
+      ),
+    ).toBe(false);
+
+    // A visible granary that is never actually put into memory does not, by itself,
+    // satisfy the gate -- the gate is memory-based, not observation-based.
     const obsWithGranary = makeObs({ visibleBuildings: [granaryBuilding()] });
-    expect(scoreGoals(obsWithGranary, npc, npc.policy, manifest).some((s) => s.key === "granaryBuild")).toBe(false);
+    expect(scoreGoals(obsWithGranary, npc, npc.policy, manifest).some((s) => s.key === "granaryBuild")).toBe(true);
   });
 
   it("monumentBuild has no gate", () => {

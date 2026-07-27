@@ -51,16 +51,24 @@ export function scoreGoals(
   const w = effPolicy.goalWeights;
   const hungerNeed = Math.floor(((manifest.maxEnergy - obs.self.energy) * 1000) / manifest.maxEnergy);
 
-  // Granary ownership is only knowable from the current observation — MemoryEntry
-  // carries no owner field, so "does my lineage have a granary" cannot be answered
-  // from memory alone. Shelters, by contrast, are a public good (no ownership
-  // check needed), so their gates below use memory instead, matching the design
-  // spec's distinction between private granaries and public shelters.
-  const ownGranaries = obs.visibleBuildings.filter(
-    (b) => b.kind === "granary" && b.ownerLineageId === obs.self.lineageId,
+  // "Does my lineage have a granary at all" is a standing fact the NPC should
+  // still know while away from home, so it's read from memory (which now
+  // carries `ownerLineageId` on building entries) rather than the current
+  // observation — an NPC outside vision range of its own granary must not
+  // conclude it has none (that would spuriously re-trigger granaryBuild and
+  // strand stockpile with no way to navigate home). Shelters are a public
+  // good (no ownership check needed), so their gates below use memory too,
+  // just without an owner filter.
+  const hasOwnGranary = npc.memory.some(
+    (e) => e.kind === "granary" && e.lastStock > 0 && e.ownerLineageId === npc.lineageId,
   );
-  const hasOwnGranary = ownGranaries.length > 0;
-  const ownGranaryBerries = ownGranaries.reduce((sum, b) => sum + b.storeBerry, 0);
+  // foodSecurity, by contrast, is deliberately based only on what's *currently
+  // visible* — an NPC away from home not knowing its exact stored amount is
+  // the intended source of circulation, not a bug (memory has no stock-count
+  // field for buildings anyway; lastStock is a fixed existence flag).
+  const ownGranaryBerries = obs.visibleBuildings
+    .filter((b) => b.kind === "granary" && b.ownerLineageId === obs.self.lineageId)
+    .reduce((sum, b) => sum + b.storeBerry, 0);
   const foodSecurity = Math.min(1000, (obs.self.carry.berry + ownGranaryBerries) * 100);
 
   const out: ScoredGoal[] = [];

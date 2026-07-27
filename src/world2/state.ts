@@ -122,6 +122,7 @@ export function createW2InitialState(
       pos: { x: site.pos.x, y: site.pos.y },
       lastStock: site.stock,
       seenTick: 0,
+      ownerLineageId: null,
     }));
 
     return {

@@ -74,6 +74,8 @@ export const MemoryEntryS = z
     pos: Vec2S,
     lastStock: Int.min(0),
     seenTick: Int,
+    // null for resource sites (ownerless); the owning lineage's id for buildings.
+    ownerLineageId: z.string().nullable(),
   })
   .strict();
 export type MemoryEntry = z.infer<typeof MemoryEntryS>;

@@ -251,6 +251,54 @@ describe("scoreGoals gating", () => {
     }
   });
 
+  it("monumentBuild scores at full weight when fully satiated (hungerNeed === 0)", () => {
+    const npc = makeNpc({ policy: makePolicy({ goalWeights: { ...makePolicy().goalWeights, monumentBuild: 733 } }) });
+    const obs = makeObs({ self: { ...makeObs().self, energy: manifest.maxEnergy } });
+    const scored = scoreGoals(obs, npc, npc.policy, manifest);
+    const monument = scored.find((s) => s.key === "monumentBuild")!;
+    expect(monument.score).toBe(733);
+  });
+
+  it("monumentBuild score is scaled down by hunger (halved at half energy)", () => {
+    const npc = makeNpc({ policy: makePolicy({ goalWeights: { ...makePolicy().goalWeights, monumentBuild: 400 } }) });
+    const obs = makeObs({ self: { ...makeObs().self, energy: manifest.maxEnergy / 2 } });
+    const scored = scoreGoals(obs, npc, npc.policy, manifest);
+    const monument = scored.find((s) => s.key === "monumentBuild")!;
+    // hungerNeed = 500 at half energy -> score = floor(400 * (1000-500) / 1000) = 200.
+    expect(monument.score).toBe(200);
+  });
+
+  it("the eat/monumentBuild crossover is determined by the genome's weights, not a fixed threshold", () => {
+    // Same energy level (satiety = 700) for both NPCs; only the genome's
+    // eat/monumentBuild weights differ, and that alone flips which goal wins.
+    const obs = makeObs({ self: { ...makeObs().self, energy: 700 } });
+
+    const monumentFavoring = makeNpc({
+      policy: makePolicy({ goalWeights: { ...makePolicy().goalWeights, eat: 200, monumentBuild: 800 } }),
+    });
+    const scoredA = scoreGoals(obs, monumentFavoring, monumentFavoring.policy, manifest);
+    const eatA = scoredA.find((s) => s.key === "eat")!.score;
+    const monumentA = scoredA.find((s) => s.key === "monumentBuild")!.score;
+    expect(monumentA).toBeGreaterThan(eatA);
+
+    const eatFavoring = makeNpc({
+      policy: makePolicy({ goalWeights: { ...makePolicy().goalWeights, eat: 800, monumentBuild: 200 } }),
+    });
+    const scoredB = scoreGoals(obs, eatFavoring, eatFavoring.policy, manifest);
+    const eatB = scoredB.find((s) => s.key === "eat")!.score;
+    const monumentB = scoredB.find((s) => s.key === "monumentBuild")!.score;
+    expect(eatB).toBeGreaterThan(monumentB);
+  });
+
+  it("near starvation, eat strictly outranks monumentBuild when their weights are equal", () => {
+    const npc = makeNpc(); // default policy: all goalWeights = 400
+    const obs = makeObs({ self: { ...makeObs().self, energy: 50 } });
+    const scored = scoreGoals(obs, npc, npc.policy, manifest);
+    const eatScore = scored.find((s) => s.key === "eat")!.score;
+    const monumentScore = scored.find((s) => s.key === "monumentBuild")!.score;
+    expect(eatScore).toBeGreaterThan(monumentScore);
+  });
+
   it("rest has no gate and the candidate set is never empty", () => {
     const scenarios: { npc: W2NpcState; obs: W2Observation }[] = [
       { npc: makeNpc(), obs: makeObs() },

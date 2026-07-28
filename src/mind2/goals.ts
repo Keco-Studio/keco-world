@@ -101,7 +101,20 @@ export function scoreGoals(
     out.push({ key: "granaryBuild", score: w.granaryBuild });
   }
 
-  out.push({ key: "monumentBuild", score: w.monumentBuild });
+  // Mirror image of the `eat` formula above: `eat` rises with hunger,
+  // `monumentBuild` rises with satiety (1000 - hungerNeed), so the two cross
+  // at an energy level determined by the genome (w.eat vs w.monumentBuild).
+  // This makes "monuments rise in fat years, stall in lean years" an
+  // evolvable disposition instead of a hardcoded constant -- without it, an
+  // NPC that is merely *not hungry* prefers the monument unconditionally,
+  // commitment hysteresis locks that preference in, and CARRY_CAP means a
+  // monument builder carries zero berries, so it can starve to death without
+  // ever reflexively switching to eat. Deliberately left ungated (see the
+  // "no gate" invariant note on scoreGoals above); only the score is scaled.
+  out.push({
+    key: "monumentBuild",
+    score: Math.floor((w.monumentBuild * (1000 - hungerNeed)) / 1000),
+  });
   out.push({ key: "rest", score: w.rest });
 
   return out;

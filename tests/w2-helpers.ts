@@ -9,6 +9,7 @@ export function makeW2TestManifest(overrides: Partial<W2Manifest> = {}): W2Manif
     gridWidth: GRID,
     gridHeight: GRID,
     seasonLengthTicks: 400,
+    firstSummerBonusTicks: 0,
     energyDrainPerTick: 2,
     starvationHpDrain: 5,
     winterColdHpDrain: 3,
@@ -33,6 +34,7 @@ export function makeW2TestManifest(overrides: Partial<W2Manifest> = {}): W2Manif
     childStartHp: 600,
     childStartEnergy: 600,
     founderSeededMemory: 3,
+    flatGoalsSatietyScaled: 0,
     ...overrides,
   };
 }

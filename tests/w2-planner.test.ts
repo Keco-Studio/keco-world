@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { planAction } from "../src/mind2/planner.js";
 import type { W2Identity, W2Policy, GoalKey, BuildingKind } from "../src/schema/world2.js";
-import { GOAL_KEYS } from "../src/schema/world2.js";
+import { GOAL_KEYS, GRANARY_CAP, CARRY_CAP } from "../src/schema/world2.js";
 import type { W2NpcState } from "../src/world2/state.js";
+import { emptyDamage } from "../src/world2/state.js";
 import type { W2Observation } from "../src/mind2/observe.js";
 import { DIRS } from "../src/mind/utility.js";
 import { drawInt } from "../src/rng/rng.js";
@@ -35,6 +36,7 @@ function makeNpc(overrides: Partial<W2NpcState> = {}): W2NpcState {
     deathTick: null,
     deathCause: null,
     lastDamage: null,
+    damage: emptyDamage(),
     identity: makeIdentity(),
     policy: makePolicy(),
     beliefs: [],
@@ -112,6 +114,21 @@ describe("planAction: eat", () => {
     expect(planAction("eat", obs, npc, manifest, SEED)).toEqual({ verb: "gather", siteId: "berry-0-0" });
   });
 
+  it("does not withdraw with a bag already at CARRY_CAP; falls through to gathering", () => {
+    // Regression: carry.berry === 0 but carry pinned at CARRY_CAP by wood/stone.
+    // `withdraw` would move 0 units -> illegal -> engine throw.
+    const carry = { berry: 0, wood: 6, stone: 4, gold: 0 };
+    expect(carry.wood + carry.stone).toBe(CARRY_CAP);
+    const npc = makeNpc({ carry, memory: [] });
+    const obs = makeObs({
+      self: { ...makeObs().self, carry },
+      visibleBuildings: [granaryBuilding({ storeBerry: 5 })],
+      tick: 250,
+    });
+    const result = planAction("eat", obs, npc, manifest, SEED);
+    expect(result).not.toEqual({ verb: "withdraw", buildingId: "gr-1" });
+  });
+
   it("gathers the nearest remembered berry site when adjacent", () => {
     const npc = makeNpc({
       memory: [{ kind: "berry", pos: { x: 11, y: 10 }, lastStock: 3, seenTick: 0, ownerLineageId: null }],
@@ -187,6 +204,25 @@ describe("planAction: stockpile", () => {
       visibleBuildings: [granaryBuilding()],
     });
     expect(planAction("stockpile", obs, npc, manifest, SEED)).toEqual({ verb: "deposit", buildingId: "gr-1" });
+  });
+
+  it("idles instead of emitting an illegal deposit when the full bag holds no berries", () => {
+    // Regression: a bag pinned at CARRY_CAP by wood/stone (abandoned build goal)
+    // used to emit `deposit` regardless, which applyAction2 rejects -> engine throw.
+    const carry = { berry: 0, wood: 6, stone: 4, gold: 0 };
+    const npc = makeNpc({ carry });
+    const obs = makeObs({ self: { ...makeObs().self, carry }, visibleBuildings: [granaryBuilding()] });
+    expect(planAction("stockpile", obs, npc, manifest, SEED)).toEqual({ verb: "idle" });
+  });
+
+  it("idles instead of emitting an illegal deposit into a granary already at GRANARY_CAP", () => {
+    const carry = { berry: 10, wood: 0, stone: 0, gold: 0 };
+    const npc = makeNpc({ carry });
+    const obs = makeObs({
+      self: { ...makeObs().self, carry },
+      visibleBuildings: [granaryBuilding({ storeBerry: GRANARY_CAP })],
+    });
+    expect(planAction("stockpile", obs, npc, manifest, SEED)).toEqual({ verb: "idle" });
   });
 
   it("moves toward the remembered own-lineage granary when the bag is full and not there yet", () => {

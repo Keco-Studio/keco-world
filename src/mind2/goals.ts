@@ -71,6 +71,19 @@ export function scoreGoals(
     .reduce((sum, b) => sum + b.storeBerry, 0);
   const foodSecurity = Math.min(1000, (obs.self.carry.berry + ownGranaryBerries) * 100);
 
+  // Task 8 diagnostic probe. Off (=identity) by default, which reproduces the
+  // frozen v2.1 scoring exactly. On, it applies b9f4725's satiety scaling --
+  // originally introduced for `monumentBuild` alone -- to the remaining
+  // flat-scored goals. Rationale for the probe: a need-scaled score is bounded
+  // above by its own weight and only reaches it at zero energy, so a flat rival
+  // drawn from the same weight distribution outranks it at almost every energy
+  // level, and outranks it *always* whenever its weight is the larger of the
+  // two. Measured at the default setting, a flat goal is top-scoring in 831-917
+  // of 1000 founder decisions and `eat` in 32-113 (see docs/world2-calibration.md).
+  const satiety = 1000 - hungerNeed;
+  const flat = (base: number): number =>
+    manifest.flatGoalsSatietyScaled === 1 ? Math.floor((base * satiety) / 1000) : base;
+
   const out: ScoredGoal[] = [];
 
   out.push({ key: "eat", score: Math.floor((w.eat * hungerNeed) / 1000) });
@@ -94,11 +107,11 @@ export function scoreGoals(
     (e) => e.kind === "shelter" && e.lastStock > 0 && chebyshev2(obs.self.pos, e.pos) <= SHELTER_NEED_RADIUS,
   );
   if (!hasNearbyShelter) {
-    out.push({ key: "shelterBuild", score: w.shelterBuild });
+    out.push({ key: "shelterBuild", score: flat(w.shelterBuild) });
   }
 
   if (!hasOwnGranary) {
-    out.push({ key: "granaryBuild", score: w.granaryBuild });
+    out.push({ key: "granaryBuild", score: flat(w.granaryBuild) });
   }
 
   // Mirror image of the `eat` formula above: `eat` rises with hunger,
@@ -115,7 +128,7 @@ export function scoreGoals(
     key: "monumentBuild",
     score: Math.floor((w.monumentBuild * (1000 - hungerNeed)) / 1000),
   });
-  out.push({ key: "rest", score: w.rest });
+  out.push({ key: "rest", score: flat(w.rest) });
 
   return out;
 }

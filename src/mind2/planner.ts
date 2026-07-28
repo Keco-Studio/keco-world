@@ -1,6 +1,6 @@
 import type { Vec2 } from "../schema/core.js";
 import type { W2Manifest, GoalKey, BuildingKind, ResourceKind, MemoryEntry } from "../schema/world2.js";
-import { RESOURCE_KINDS, RECIPES, CARRY_CAP } from "../schema/world2.js";
+import { RESOURCE_KINDS, RECIPES, CARRY_CAP, GRANARY_CAP } from "../schema/world2.js";
 import type { W2NpcState } from "../world2/state.js";
 import { chebyshev2, carryTotal } from "../world2/state.js";
 import type { W2Observation } from "./observe.js";
@@ -115,14 +115,32 @@ function ownGranaryHere(obs: W2Observation): W2Observation["visibleBuildings"][n
 function planEat(obs: W2Observation, npc: W2NpcState, manifest: W2Manifest, seedRoot: string): W2Action {
   if (npc.carry.berry > 0) return { verb: "consume" };
   const granary = ownGranaryHere(obs);
-  if (granary !== null && granary.storeBerry > 0) return { verb: "withdraw", buildingId: granary.id };
+  // The carry-headroom test is applyAction2's own precondition for `withdraw`
+  // (amount = min(store.berry, CARRY_CAP - carryTotal) must be > 0). Reaching
+  // here means carry.berry === 0, but carry can still be pinned at CARRY_CAP by
+  // *other* resources (leftover wood/stone from an abandoned build goal), and
+  // emitting the withdraw anyway is an illegal action, which engine2 turns into
+  // a hard throw. Same failure shape -- and same idle fallback -- as gatherPath
+  // above; nothing in the action set can shed non-berry carry.
+  if (granary !== null && granary.storeBerry > 0 && carryTotal(npc.carry) < CARRY_CAP) {
+    return { verb: "withdraw", buildingId: granary.id };
+  }
   return gatherPath("berry", npc, obs, manifest, seedRoot);
 }
 
 function planStockpile(obs: W2Observation, npc: W2NpcState, manifest: W2Manifest, seedRoot: string): W2Action {
   if (carryTotal(npc.carry) < CARRY_CAP) return gatherPath("berry", npc, obs, manifest, seedRoot);
   const granary = ownGranaryHere(obs);
-  if (granary !== null) return { verb: "deposit", buildingId: granary.id };
+  // Mirror of the guard in planEat: `deposit` is illegal unless there is at
+  // least one berry to move AND room in the granary for it. A full carry with
+  // zero berries (all wood/stone) used to emit deposit unconditionally and
+  // crash the engine -- observed live at tick 2721 of seed w2-3 during Task 8's
+  // C2 run. Only berries are ever deposited, so storeBerry is the granary's
+  // whole load and can be compared against GRANARY_CAP directly.
+  if (granary !== null && npc.carry.berry > 0 && granary.storeBerry < GRANARY_CAP) {
+    return { verb: "deposit", buildingId: granary.id };
+  }
+  if (granary !== null) return { verb: "idle" };
   // Navigate home from memory (ownership-filtered) so a full-carry NPC can find its
   // way back even when the granary itself is currently out of vision range.
   const target = nearestRemembered(npc.memory, "granary", npc.pos, npc.lineageId);

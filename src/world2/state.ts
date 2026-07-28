@@ -15,6 +15,35 @@ import { RESOURCE_KINDS, GRID } from "../schema/world2.js";
 import { drawInt } from "../rng/rng.js";
 import { hashCanonical } from "../canon/canonicalize.js";
 
+/** The four things that can subtract hp in world2. */
+export const DAMAGE_SOURCES = ["starvation", "cold", "old_age", "wolf"] as const;
+export type DamageSource = (typeof DAMAGE_SOURCES)[number];
+
+export function emptyDamage(): Record<DamageSource, number> {
+  return { starvation: 0, cold: 0, old_age: 0, wolf: 0 };
+}
+
+/**
+ * Death cause = the source that did the most cumulative hp damage over this
+ * NPC's life; ties resolve in DAMAGE_SOURCES order.
+ *
+ * Task 8 diagnosis note: the previous rule was "whatever damaged me last"
+ * (`lastDamage`), which systematically mislabelled winter deaths. needsStep2
+ * applies starvation before cold, so any NPC dying in winter got `cold` as its
+ * cause even when starvation was doing 5 hp/tick against cold's 3 — and with
+ * `winterColdHpDrain = 0` it still got `cold` despite cold doing literally no
+ * damage. That made the first-winter death ledger unreadable, which is exactly
+ * the evidence C1 has to reason from. This changes labelling only: no hp,
+ * energy, or aliveness arithmetic depends on it.
+ */
+export function dominantDamage(damage: Record<DamageSource, number>): string {
+  let best: DamageSource | null = null;
+  for (const s of DAMAGE_SOURCES) {
+    if (damage[s] > 0 && (best === null || damage[s] > damage[best])) best = s;
+  }
+  return best ?? "unknown";
+}
+
 export interface W2NpcState {
   npcId: string;
   name: string;
@@ -25,8 +54,10 @@ export interface W2NpcState {
   alive: boolean;
   deathTick: number | null;
   deathCause: string | null;
-  /** last source of hp damage, used as death cause chain root */
+  /** last source of hp damage (set only when that source actually removed hp) */
   lastDamage: string | null;
+  /** cumulative hp removed by each source over this NPC's life */
+  damage: Record<DamageSource, number>;
   identity: W2Identity;
   policy: W2Policy;
   beliefs: W2Belief[];
@@ -48,8 +79,17 @@ export interface W2WorldState {
   wolf: { pos: Vec2 };
 }
 
+/**
+ * Season at `tick`. With `firstSummerBonusTicks = 0` this is the frozen v2.0
+ * rule: alternating blocks of `seasonLengthTicks` starting with summer at
+ * tick 0. A positive bonus B stretches the *first* summer to
+ * `seasonLengthTicks + B` ticks (0 .. L+B-1) and shifts every later boundary by
+ * exactly B, leaving all subsequent seasons at their normal length.
+ */
 export function seasonAt2(tick: number, manifest: W2Manifest): "summer" | "winter" {
-  return Math.floor(tick / manifest.seasonLengthTicks) % 2 === 0 ? "summer" : "winter";
+  const bonus = manifest.firstSummerBonusTicks;
+  const shifted = tick < bonus ? 0 : tick - bonus;
+  return Math.floor(shifted / manifest.seasonLengthTicks) % 2 === 0 ? "summer" : "winter";
 }
 
 export function chebyshev2(a: Vec2, b: Vec2): number {
@@ -136,6 +176,7 @@ export function createW2InitialState(
       deathTick: null,
       deathCause: null,
       lastDamage: null,
+      damage: emptyDamage(),
       identity,
       policy,
       beliefs,

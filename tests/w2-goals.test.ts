@@ -8,6 +8,7 @@ import type {
 } from "../src/schema/world2.js";
 import { GOAL_KEYS, SHELTER_NEED_RADIUS } from "../src/schema/world2.js";
 import type { W2NpcState } from "../src/world2/state.js";
+import { emptyDamage } from "../src/world2/state.js";
 import type { W2Observation } from "../src/mind2/observe.js";
 import { drawInt } from "../src/rng/rng.js";
 import { makeW2TestManifest } from "./w2-helpers.js";
@@ -39,6 +40,7 @@ function makeNpc(overrides: Partial<W2NpcState> = {}): W2NpcState {
     deathTick: null,
     deathCause: null,
     lastDamage: null,
+    damage: emptyDamage(),
     identity: makeIdentity(),
     policy: makePolicy(),
     beliefs: [],
@@ -314,6 +316,45 @@ describe("scoreGoals gating", () => {
       expect(scored.length).toBeGreaterThan(0);
       expect(scored.some((s) => s.key === "rest")).toBe(true);
     }
+  });
+});
+
+describe("flatGoalsSatietyScaled diagnostic probe (Task 8)", () => {
+  const probed = makeW2TestManifest({ flatGoalsSatietyScaled: 1 });
+
+  it("default 0 leaves rest/shelterBuild/granaryBuild at their raw weights", () => {
+    const npc = makeNpc();
+    const obs = makeObs({ self: { ...makeObs().self, energy: 200 } }); // hungerNeed 800
+    const scored = scoreGoals(obs, npc, npc.policy, manifest);
+    for (const key of ["rest", "shelterBuild", "granaryBuild"] as const) {
+      expect(scored.find((s) => s.key === key)!.score).toBe(400);
+    }
+  });
+
+  it("probe on scales those three by satiety, leaving eat/stockpile untouched", () => {
+    const npc = makeNpc();
+    const obs = makeObs({ self: { ...makeObs().self, energy: 200 } }); // hungerNeed 800, satiety 200
+    const base = scoreGoals(obs, npc, npc.policy, manifest);
+    const scored = scoreGoals(obs, npc, npc.policy, probed);
+    for (const key of ["rest", "shelterBuild", "granaryBuild"] as const) {
+      expect(scored.find((s) => s.key === key)!.score).toBe(Math.floor((400 * 200) / 1000));
+    }
+    expect(scored.find((s) => s.key === "eat")!.score).toBe(base.find((s) => s.key === "eat")!.score);
+  });
+
+  it("the probe is what flips a hungry equal-weight NPC from resting to eating", () => {
+    const npc = makeNpc();
+    const obs = makeObs({ self: { ...makeObs().self, energy: 200 } });
+    const top = (m: typeof manifest) => {
+      const scored = scoreGoals(obs, npc, npc.policy, m);
+      let best = scored[0]!;
+      for (const c of scored) if (c.score > best.score) best = c;
+      return best.key;
+    };
+    // all weights equal at 400: with flat scoring, eat (400 * 0.8 = 320) loses
+    // to the flat 400s; with the probe, eat 320 beats the scaled 80s.
+    expect(top(manifest)).not.toBe("eat");
+    expect(top(probed)).toBe("eat");
   });
 });
 

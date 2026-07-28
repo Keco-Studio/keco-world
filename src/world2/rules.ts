@@ -1,6 +1,6 @@
 import type { W2Manifest, W2Identity, W2Policy, W2Belief, MemoryEntry, W2SemanticEvent } from "../schema/world2.js";
 import type { W2WorldState, W2NpcState } from "./state.js";
-import { seasonAt2, chebyshev2, npcAge2, shelterAt } from "./state.js";
+import { seasonAt2, chebyshev2, npcAge2, shelterAt, dominantDamage, emptyDamage } from "./state.js";
 import { drawInt } from "../rng/rng.js";
 import { hashCanonical } from "../canon/canonicalize.js";
 import { DIRS } from "../mind/utility.js";
@@ -66,7 +66,8 @@ export function environmentStep2(
     if (!npc.alive) continue;
     if (chebyshev2(npc.pos, state.wolf.pos) <= 1) {
       npc.hp -= manifest.wolfDamage;
-      npc.lastDamage = "wolf";
+      npc.damage.wolf += manifest.wolfDamage;
+      if (manifest.wolfDamage > 0) npc.lastDamage = "wolf";
       events.push({ tick: state.tick, kind: "wolf_attack", npcId: npc.npcId, data: { damage: manifest.wolfDamage } });
     }
   }
@@ -82,18 +83,21 @@ export function needsStep2(state: W2WorldState, manifest: W2Manifest, events: W2
     const isStarving = npc.energy === 0;
     if (isStarving) {
       npc.hp -= manifest.starvationHpDrain;
-      npc.lastDamage = "starvation";
+      npc.damage.starvation += manifest.starvationHpDrain;
+      if (manifest.starvationHpDrain > 0) npc.lastDamage = "starvation";
       if (!wasStarving) {
         events.push({ tick: state.tick, kind: "starving", npcId: npc.npcId, data: {} });
       }
     }
     if (season === "winter" && shelterAt(state, npc.pos) === null) {
       npc.hp -= manifest.winterColdHpDrain;
-      npc.lastDamage = "cold";
+      npc.damage.cold += manifest.winterColdHpDrain;
+      if (manifest.winterColdHpDrain > 0) npc.lastDamage = "cold";
     }
     if (npcAge2(npc, state.tick) > manifest.elderAgeTicks) {
       npc.hp -= manifest.senescenceHpDrain;
-      npc.lastDamage = "old_age";
+      npc.damage.old_age += manifest.senescenceHpDrain;
+      if (manifest.senescenceHpDrain > 0) npc.lastDamage = "old_age";
     }
     if (npc.energy >= manifest.hpRegenEnergyMin) {
       npc.hp = Math.min(manifest.maxHp, npc.hp + manifest.hpRegenPerTick);
@@ -102,7 +106,7 @@ export function needsStep2(state: W2WorldState, manifest: W2Manifest, events: W2
       npc.hp = 0;
       npc.alive = false;
       npc.deathTick = state.tick;
-      npc.deathCause = npc.lastDamage ?? "unknown";
+      npc.deathCause = dominantDamage(npc.damage);
       events.push({ tick: state.tick, kind: "death", npcId: npc.npcId, data: { cause: npc.deathCause } });
     }
   }
@@ -188,6 +192,7 @@ export function reproductionStep2(
       deathTick: null,
       deathCause: null,
       lastDamage: null,
+      damage: emptyDamage(),
       identity: childGenome.identity,
       policy: childGenome.policy,
       beliefs: childGenome.beliefs,

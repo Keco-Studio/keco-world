@@ -17,6 +17,29 @@ describe("w2 rules", () => {
     }
     expect(s.buildings).toEqual([]);
   });
+  it("firstSummerBonusTicks stretches only the first summer and shifts later boundaries by exactly the bonus", () => {
+    const base = makeW2TestManifest(); // L = 400, bonus = 0
+    const bonus = makeW2TestManifest({ firstSummerBonusTicks: 300 });
+
+    // bonus = 0 keeps the frozen v2.0 rhythm
+    expect(seasonAt2(0, base)).toBe("summer");
+    expect(seasonAt2(399, base)).toBe("summer");
+    expect(seasonAt2(400, base)).toBe("winter");
+    expect(seasonAt2(800, base)).toBe("summer");
+
+    // first summer now runs 0..699 (L + bonus ticks)
+    expect(seasonAt2(0, bonus)).toBe("summer");
+    expect(seasonAt2(400, bonus)).toBe("summer");
+    expect(seasonAt2(699, bonus)).toBe("summer");
+    // first winter runs 700..1099 -- a normal-length season
+    expect(seasonAt2(700, bonus)).toBe("winter");
+    expect(seasonAt2(1099, bonus)).toBe("winter");
+    expect(seasonAt2(1100, bonus)).toBe("summer");
+    // every later season keeps seasonLengthTicks
+    expect(seasonAt2(1499, bonus)).toBe("summer");
+    expect(seasonAt2(1500, bonus)).toBe("winter");
+  });
+
   it("cold damage applies only when not standing on a shelter", () => {
     const m = { ...makeW2TestManifest(), seasonLengthTicks: 1 }; // tick 1 = winter
     const s = createW2InitialState(m, makeW2TestRoster("r2"), "r2");
@@ -39,6 +62,37 @@ describe("w2 rules", () => {
     expect(shelterAt(s, a!.pos)).not.toBeNull();
     expect(hpA - a!.hp).toBeLessThan(hpB - b!.hp); // 有庇护所的掉血更少
   });
+  it("death cause is the largest cumulative damage source, not the last one applied", () => {
+    // Winter, no shelter, energy 0: starvation (5/tick) outweighs cold (3/tick),
+    // but cold is applied last. The pre-Task-8 rule labelled this "cold".
+    const m = { ...makeW2TestManifest(), seasonLengthTicks: 1 };
+    const s = createW2InitialState(m, makeW2TestRoster("r-cause"), "r-cause");
+    s.tick = 1;
+    const npc = s.npcs[0]!;
+    npc.energy = 0;
+    npc.hp = 40;
+    const events: W2SemanticEvent[] = [];
+    for (let i = 0; i < 10 && npc.alive; i++) needsStep2(s, m, events);
+    expect(npc.alive).toBe(false);
+    expect(npc.damage.starvation).toBeGreaterThan(npc.damage.cold);
+    expect(npc.deathCause).toBe("starvation");
+    expect(events.some((e) => e.kind === "death" && e.data["cause"] === "starvation")).toBe(true);
+  });
+
+  it("a zero-damage source is never blamed for a death", () => {
+    // winterColdHpDrain = 0 must not produce a "cold" death cause.
+    const m = { ...makeW2TestManifest(), seasonLengthTicks: 1, winterColdHpDrain: 0 };
+    const s = createW2InitialState(m, makeW2TestRoster("r-cause0"), "r-cause0");
+    s.tick = 1;
+    const npc = s.npcs[0]!;
+    npc.energy = 0;
+    npc.hp = 20;
+    for (let i = 0; i < 10 && npc.alive; i++) needsStep2(s, m, []);
+    expect(npc.alive).toBe(false);
+    expect(npc.damage.cold).toBe(0);
+    expect(npc.deathCause).toBe("starvation");
+  });
+
   it("sites regrow deterministically and never exceed capacity", () => {
     const m = makeW2TestManifest();
     const s = createW2InitialState(m, makeW2TestRoster("r3"), "r3");

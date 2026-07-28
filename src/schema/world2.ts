@@ -153,6 +153,13 @@ export const W2ManifestS = z
     gridWidth: Int.min(4),
     gridHeight: Int.min(4),
     seasonLengthTicks: Int.min(1),
+    // Calibration knob (Task 8): extra ticks granted to the *first* summer only.
+    // Every later season keeps `seasonLengthTicks`. Founders start with nothing
+    // built and only `founderSeededMemory` known sites, so the first winter
+    // arrives before a shelter economy can exist; this lets the first summer be
+    // lengthened without perturbing the steady-state season rhythm that all
+    // long-run behaviour metrics are measured against. 0 = frozen v2.0 rhythm.
+    firstSummerBonusTicks: Int.min(0),
     energyDrainPerTick: Int.min(0),
     starvationHpDrain: Int.min(0),
     winterColdHpDrain: Int.min(0),
@@ -177,6 +184,14 @@ export const W2ManifestS = z
     childStartHp: Int.min(1),
     childStartEnergy: Int.min(0),
     founderSeededMemory: Int.min(0),
+    // Task 8 diagnostic probe, default 0 = frozen v2.1 scoring. When 1,
+    // `rest`/`shelterBuild`/`granaryBuild` are multiplied by satiety
+    // (1000 - hungerNeed), i.e. the *same* treatment commit b9f4725 already
+    // applied to `monumentBuild`. Exists so the Task 8 root-cause claim ("flat
+    // scores structurally outrank need-scaled ones") can be tested causally
+    // instead of only argued from code reading; it deliberately does NOT change
+    // the default world, which is a design decision outside Task 8's mandate.
+    flatGoalsSatietyScaled: Int.min(0).max(1),
   })
   .strict();
 export type W2Manifest = z.infer<typeof W2ManifestS>;

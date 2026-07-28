@@ -20,6 +20,7 @@
     "biography": "tsx src/cli/biography.ts",
     "degradation": "tsx src/cli/degradation.ts",
     "arms": "tsx src/cli/arms.ts",
+    "world2": "tsx src/cli/world2.ts",
     "formal": "tsx src/cli/formal.ts",
     "evalpack": "tsx src/cli/evalpack.ts",
     "analyze": "tsx src/cli/analyze.ts",
